@@ -12,6 +12,11 @@ ENV PYTHONUNBUFFERED=1 \
     COURRIERS_DATA_DIR=/data \
     TMPDIR=/tmp
 
+# Sur certaines box (MTU réduit, IPv6 partielle), apt se fige dans le conteneur :
+# on force l'IPv4, on ajoute des retries et des timeouts courts.
+RUN printf 'Acquire::ForceIPv4 "true";\nAcquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+        > /etc/apt/apt.conf.d/99network
+
 # OCR + outils PDF. ocrmypdf tire tesseract, ghostscript, qpdf, unpaper, pngquant.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ocrmypdf \
