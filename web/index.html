@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Banque de courriers</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📬</text></svg>">
+</head>
+<body>
+  <header>
+    <h1>📬 Banque de courriers</h1>
+    <div id="stats" class="stats"></div>
+  </header>
+
+  <form id="search" class="search">
+    <input type="search" id="q" name="q" placeholder="Mots présents dans le courrier…" autocomplete="off">
+    <label>du <input type="date" id="date_from"></label>
+    <label>au <input type="date" id="date_to"></label>
+    <input type="text" id="correspondent" placeholder="Correspondant" autocomplete="off">
+    <input type="text" id="tag" list="taglist" placeholder="Tag" autocomplete="off">
+    <datalist id="taglist"></datalist>
+    <select id="status">
+      <option value="all">Tous</option>
+      <option value="ok" selected>Traités</option>
+      <option value="failed">En échec</option>
+    </select>
+    <select id="sort">
+      <option value="date">Date du courrier</option>
+      <option value="added">Ajout récent</option>
+      <option value="pertinence">Pertinence</option>
+    </select>
+    <button type="submit">Rechercher</button>
+    <button type="button" id="reset" class="ghost">Réinitialiser</button>
+  </form>
+
+  <main id="results"></main>
+
+  <nav id="pager" class="pager" hidden>
+    <button id="prev" type="button">‹ Précédent</button>
+    <span id="pageinfo"></span>
+    <button id="next" type="button">Suivant ›</button>
+  </nav>
+
+  <!-- Modale d'aperçu PDF -->
+  <dialog id="preview">
+    <div class="modal-head">
+      <strong id="preview-title">Aperçu</strong>
+      <span>
+        <a id="preview-dl" class="btn" download>Télécharger l'original</a>
+        <button type="button" data-close>Fermer</button>
+      </span>
+    </div>
+    <iframe id="preview-frame" title="Aperçu du courrier"></iframe>
+  </dialog>
+
+  <!-- Modale d'édition -->
+  <dialog id="editor">
+    <form method="dialog" id="editform">
+      <h2>Modifier le courrier</h2>
+      <label>Titre <input type="text" id="e-title"></label>
+      <label>Correspondant <input type="text" id="e-correspondent"></label>
+      <label>Date du courrier <input type="date" id="e-date"></label>
+      <label>Tags (séparés par des virgules) <input type="text" id="e-tags"></label>
+      <label>Notes <textarea id="e-notes" rows="3"></textarea></label>
+      <div class="reocr">
+        <span>Relancer l'OCR :</span>
+        <button type="button" data-lang="fra">Français</button>
+        <button type="button" data-lang="deu">Allemand</button>
+        <button type="button" data-lang="ara">Arabe</button>
+        <button type="button" data-lang="fra+deu">FR + DE</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="e-delete" class="danger">Supprimer</button>
+        <span class="spacer"></span>
+        <button type="button" data-close>Annuler</button>
+        <button type="submit" class="primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

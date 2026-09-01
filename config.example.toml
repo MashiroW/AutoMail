@@ -1,0 +1,47 @@
+# Configuration de la banque de courriers OCR.
+# Copiez ce fichier en config.toml (ou /etc/courriers-ocr/config.toml) et adaptez.
+# Toute clé peut aussi être surchargée par une variable d'environnement COURRIERS_<CLÉ>
+# (ex. COURRIERS_PORT=9000, COURRIERS_OCR_LANGUAGES="fra+deu").
+
+# Dossier racine qui contient toutes les données (inbox, originaux, ocr, base…).
+data_dir = "./data"
+
+# Dossier surveillé où le scanner dépose les PDF. Par défaut : <data_dir>/inbox
+# inbox_dir = "./data/inbox"
+
+# Langue(s) Tesseract pour le premier OCR. "fra", "fra+deu", "deu", "ara"…
+ocr_languages = "fra"
+
+# Fréquence de scan de l'inbox, en secondes.
+poll_interval_seconds = 10
+
+# Nombre de relevés (taille + date) identiques consécutifs avant de considérer
+# qu'un fichier a fini d'être écrit par le scanner.
+stable_checks = 2
+
+# Serveur web.
+host = "0.0.0.0"
+port = 8080
+
+# Largeur des vignettes générées, en pixels.
+thumbnail_width = 400
+
+# Arguments supplémentaires passés à ocrmypdf.
+ocr_extra_args = ["--rotate-pages", "--deskew", "--clean"]
+
+# Conserver le texte des PDF déjà numériques au lieu de les ré-OCRiser.
+ocr_skip_text = true
+
+# Délai maximal d'un OCR, en secondes (protège contre un fichier qui bloque).
+ocr_timeout_seconds = 1800
+
+# Jeton d'API optionnel. Si renseigné, chaque appel /api/* doit fournir
+# Authorization: Bearer <token>  ou  ?token=<token>. Vide = pas d'authentification.
+# api_token = ""
+
+# Origines CORS autorisées pour l'interface web.
+cors_origins = ["*"]
+
+# Mode test : ne lance pas Tesseract, copie le PDF et lit un éventuel fichier
+# .txt voisin comme texte OCR. Utile pour développer sans installer ocrmypdf.
+fake_ocr = false

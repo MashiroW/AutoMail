@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "courriers-ocr"
+version = "1.0.0"
+description = "Banque de courriers OCR auto-hébergée pour Raspberry Pi"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["courriers_ocr"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
