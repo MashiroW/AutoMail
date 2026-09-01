@@ -20,6 +20,10 @@ services:
       COURRIERS_STABLE_CHECKS: "${COURRIERS_STABLE_CHECKS:-2}"
     volumes:
       - ./data:/data
+      # code monté en direct : `git pull` + `docker compose restart` suffit,
+      # pas besoin de reconstruire l'image pour un changement de code
+      - ./courriers_ocr:/app/courriers_ocr:ro
+      - ./web:/app/web:ro
 
   web:
     build: .
@@ -32,6 +36,8 @@ services:
       COURRIERS_API_TOKEN: "${COURRIERS_API_TOKEN:-}"
     volumes:
       - ./data:/data
+      - ./courriers_ocr:/app/courriers_ocr:ro
+      - ./web:/app/web:ro
     ports:
       - "${COURRIERS_PORT:-8080}:8080"
     depends_on:

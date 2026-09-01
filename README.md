@@ -85,11 +85,18 @@ COURRIERS_OCR_LANGUAGES=fra
 # COURRIERS_API_TOKEN=un-secret-optionnel
 ```
 
-Puis `docker compose up -d`. Mise à jour du code plus tard :
+Puis `docker compose up -d`.
+
+**Mise à jour du code** : le dossier `courriers_ocr/` (et `web/`) est monté en
+direct dans les conteneurs, donc :
 
 ```bash
-git pull && docker compose up -d --build
+git pull && docker compose restart      # ~2 s, aucune reconstruction
 ```
+
+Ne reconstruire l'image (`docker compose up -d --build`) que si
+`requirements.txt` ou le `Dockerfile` a changé — et même là, la couche
+`apt-get` (Tesseract) reste en cache, seul `pip install` retourne.
 
 Sauvegarde : tout est dans le dossier `data/` → `tar czf sauvegarde.tgz data`
 (arrêter le worker d'abord : `docker compose stop worker`).
