@@ -27,9 +27,13 @@ systemd (`worker` d'ingestion, `web` pour l'interface).
 ## Installation sur la Pi
 
 ```bash
-git clone <ce-dépôt> courriers-ocr && cd courriers-ocr
+git clone https://github.com/MashiroW/AutoMail.git courriers-ocr && cd courriers-ocr
 sudo deploy/install.sh
 ```
+
+Le dépôt est privé : la première fois, `git clone` demande tes identifiants
+GitHub (ou utilise `git@github.com:MashiroW/AutoMail.git` si une clé SSH est
+déjà configurée sur la Pi).
 
 Le script installe les paquets (`ocrmypdf`, `tesseract-ocr-fra/deu/ara`,
 `poppler-utils`), crée l'utilisateur `courriers`, l'arborescence
@@ -37,6 +41,25 @@ Le script installe les paquets (`ocrmypdf`, `tesseract-ocr-fra/deu/ara`,
 deux services.
 
 Interface : `http://raspberrypi.local:8080/` (adapter le nom d'hôte / le port).
+
+### Tester que ça fonctionne
+
+```bash
+# les deux services doivent être "active (running)"
+sudo systemctl status courriers-ocr-worker courriers-ocr-web
+
+# suivre le traitement en direct
+journalctl -u courriers-ocr-worker -f
+```
+
+Dans un autre terminal, déposer un PDF de test dans l'inbox :
+
+```bash
+cp mon_scan.pdf /var/lib/courriers-ocr/inbox/
+```
+
+Dès que le journal affiche `#1 indexé — …`, ouvrir
+`http://raspberrypi.local:8080/` et chercher un mot du courrier.
 
 ### Configuration
 
@@ -69,6 +92,41 @@ dans l'inbox.
 Un fichier n'est traité qu'une fois sa taille **stable** (le scanner a fini
 d'écrire). Une fois traité, il quitte l'inbox : l'original va dans
 `originals/AAAA/MM/`, le PDF OCR dans `ocr/AAAA/MM/`.
+
+### Changer le dossier surveillé (inbox)
+
+Par défaut l'inbox est `<data_dir>/inbox`, donc `/var/lib/courriers-ocr/inbox`.
+Pour surveiller un autre dossier, deux façons équivalentes :
+
+**A. Fichier d'environnement systemd** (le plus simple) :
+
+```bash
+sudo nano /etc/courriers-ocr/courriers-ocr.env
+```
+
+Ajouter ou modifier :
+
+```
+COURRIERS_INBOX_DIR=/chemin/vers/mon/dossier
+```
+
+puis redémarrer uniquement le worker (le service web n'utilise pas ce réglage) :
+
+```bash
+sudo systemctl restart courriers-ocr-worker
+```
+
+**B. Fichier `config.toml`** (`/etc/courriers-ocr/config.toml`) : décommenter et
+éditer la ligne
+
+```toml
+inbox_dir = "/chemin/vers/mon/dossier"
+```
+
+puis le même `systemctl restart courriers-ocr-worker`.
+
+Changer `data_dir` déplace tout (originaux, OCR, base, corbeille…) ; changer
+`inbox_dir` ne déplace que le dossier de dépôt.
 
 ## Recherche
 
