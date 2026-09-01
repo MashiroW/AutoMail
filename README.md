@@ -24,16 +24,84 @@ systemd (`worker` d'ingestion, `web` pour l'interface).
   l'archive (les PDF s'accumulent) et la longévité.
 - Ordre de grandeur OCR sur Pi 4 : ~10 à 40 s par page selon la qualité du scan.
 
-## Installation sur la Pi
+Deux méthodes d'installation :
+
+- **Docker** (ci-dessous) — recommandé, et **obligatoire si l'OS du Pi est
+  ancien** (Buster / Bullseye) : le conteneur embarque Python 3.12 + un ocrmypdf
+  récent, indépendamment de la version du système.
+- **systemd** (plus bas) — installation « bare-metal », nécessite Debian 12
+  (Bookworm) ou plus récent sur le Pi.
+
+Le dépôt est privé : la première fois, `git clone` demande tes identifiants
+GitHub (ou utilise `git@github.com:MashiroW/AutoMail.git` si une clé SSH est
+déjà configurée sur le Pi).
+
+---
+
+## Installation avec Docker
+
+### 1. Installer Docker sur le Pi (si absent)
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+newgrp docker   # ou se déconnecter / reconnecter
+```
+
+### 2. Récupérer le projet et démarrer
+
+```bash
+git clone https://github.com/MashiroW/AutoMail.git courriers-ocr && cd courriers-ocr
+mkdir -p data/inbox
+docker compose up -d --build
+```
+
+La construction de l'image prend quelques minutes sur un Pi (compilation +
+téléchargement des paquets Tesseract). Ensuite, deux conteneurs tournent :
+`courriers-ocr-worker-1` (ingestion) et `courriers-ocr-web-1` (interface).
+
+Interface : `http://<ip-du-pi>:8080/`
+
+### 3. Tester que ça fonctionne
+
+```bash
+docker compose ps                     # les 2 services "running"
+docker compose logs -f worker         # suivre le traitement
+
+# dans un autre terminal : déposer un PDF de test
+cp mon_scan.pdf data/inbox/
+```
+
+Dès que le log affiche `#1 indexé — …`, ouvrir l'interface et chercher un mot
+du courrier.
+
+### Réglages (Docker)
+
+Créer un fichier `.env` à côté de `docker-compose.yml` :
+
+```
+COURRIERS_PORT=8080
+COURRIERS_OCR_LANGUAGES=fra
+# COURRIERS_API_TOKEN=un-secret-optionnel
+```
+
+Puis `docker compose up -d`. Mise à jour du code plus tard :
+
+```bash
+git pull && docker compose up -d --build
+```
+
+Sauvegarde : tout est dans le dossier `data/` → `tar czf sauvegarde.tgz data`
+(arrêter le worker d'abord : `docker compose stop worker`).
+
+---
+
+## Installation systemd (Debian 12+)
 
 ```bash
 git clone https://github.com/MashiroW/AutoMail.git courriers-ocr && cd courriers-ocr
 sudo deploy/install.sh
 ```
-
-Le dépôt est privé : la première fois, `git clone` demande tes identifiants
-GitHub (ou utilise `git@github.com:MashiroW/AutoMail.git` si une clé SSH est
-déjà configurée sur la Pi).
 
 Le script installe les paquets (`ocrmypdf`, `tesseract-ocr-fra/deu/ara`,
 `poppler-utils`), crée l'utilisateur `courriers`, l'arborescence
@@ -95,8 +163,25 @@ d'écrire). Une fois traité, il quitte l'inbox : l'original va dans
 
 ### Changer le dossier surveillé (inbox)
 
-Par défaut l'inbox est `<data_dir>/inbox`, donc `/var/lib/courriers-ocr/inbox`.
-Pour surveiller un autre dossier, deux façons équivalentes :
+Par défaut l'inbox est `<data_dir>/inbox`.
+
+#### En Docker
+
+Le plus simple : monter le dossier voulu de l'hôte sur `/data/inbox` du conteneur.
+Dans `docker-compose.yml`, sous **`worker`** *et* **`web`**, ajouter un volume :
+
+```yaml
+    volumes:
+      - ./data:/data
+      - /chemin/vers/mon/dossier:/data/inbox   # <-- dossier réel du Pi
+```
+
+puis `docker compose up -d`. (Ou, si le dossier est ailleurs dans `data`,
+définir `COURRIERS_INBOX_DIR=/data/autre-sous-dossier` dans le `.env`.)
+
+#### En systemd
+
+Par défaut : `/var/lib/courriers-ocr/inbox`. Deux façons équivalentes :
 
 **A. Fichier d'environnement systemd** (le plus simple) :
 
@@ -192,6 +277,7 @@ avec un texte connu), puis ouvrir `http://localhost:8080/`.
 | `courriers_ocr/app.py`     | API REST + service de l'UI |
 | `web/`                     | interface web (HTML/CSS/JS, sans build) |
 | `deploy/`                  | `install.sh`, unités systemd, partage Samba |
+| `Dockerfile`, `docker-compose.yml` | déploiement conteneurisé (worker + web) |
 
 ## Sécurité
 
