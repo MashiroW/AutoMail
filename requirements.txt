@@ -1,6 +1,12 @@
-# Dépendances runtime (volontairement minimales)
+# Dépendances runtime (volontairement minimales).
+#
+# uvicorn "nu" (pas [standard]) : on évite uvloop / httptools / watchfiles, qui
+# sont des extensions compilées sans roue précompilée pour ARM 32 bits (Raspberry
+# Pi). uvicorn nu suffit largement pour un service web local.
+# Seule dépendance compilée restante : pydantic-core, qui publie bien des roues
+# manylinux2014 armv7l sur PyPI (compatibles glibc ancienne, donc Buster inclus).
 fastapi>=0.111
-uvicorn[standard]>=0.30
+uvicorn>=0.30
 python-multipart>=0.0.9
 
 # tomllib fait partie de la stdlib à partir de Python 3.11 ; repli pour 3.10

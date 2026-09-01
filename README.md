@@ -24,17 +24,55 @@ systemd (`worker` d'ingestion, `web` pour l'interface).
   l'archive (les PDF s'accumulent) et la longévité.
 - Ordre de grandeur OCR sur Pi 4 : ~10 à 40 s par page selon la qualité du scan.
 
-Deux méthodes d'installation :
+Trois méthodes d'installation :
 
-- **Docker** (ci-dessous) — recommandé, et **obligatoire si l'OS du Pi est
-  ancien** (Buster / Bullseye) : le conteneur embarque Python 3.12 + un ocrmypdf
-  récent, indépendamment de la version du système.
-- **systemd** (plus bas) — installation « bare-metal », nécessite Debian 12
-  (Bookworm) ou plus récent sur le Pi.
+- **`install-buster.sh`** (juste ci-dessous) — pour un Pi sur un OS **ancien**
+  (Raspberry Pi OS Buster / Bullseye, Python < 3.10). Installe la pile OCR via
+  l'apt de l'hôte + un Python 3.11 portable. **Pas de Docker.** C'est le chemin
+  conseillé sur un Pi qui ne peut pas être remis à niveau.
+- **systemd** (`install.sh`, plus bas) — installation « bare-metal » sur Debian 12
+  (Bookworm) ou plus récent (Python 3.11 déjà fourni par le système).
+- **Docker** (plus bas) — utile si un moteur Docker fonctionnel est déjà en
+  place. À éviter sur Buster : le réseau interne de Docker y est souvent cassé.
 
-Le dépôt est privé : la première fois, `git clone` demande tes identifiants
-GitHub (ou utilise `git@github.com:MashiroW/AutoMail.git` si une clé SSH est
-déjà configurée sur le Pi).
+Le dépôt est privé : `git clone` demande tes identifiants GitHub, ou ajoute une
+**clé de déploiement** (`cat ~/.ssh/id_ed25519.pub` → GitHub → repo → Settings →
+Deploy keys), ou télécharge simplement le ZIP depuis l'interface web de GitHub.
+
+---
+
+## Installation sur OS ancien (Buster / Bullseye) — sans Docker
+
+Prérequis : l'`apt` du Pi doit pouvoir installer des paquets. Sur Buster (EOL),
+basculer d'abord les dépôts Debian sur l'archive :
+
+```bash
+sudo tee /etc/apt/sources.list.d/debian-archive.list >/dev/null <<'EOF'
+deb [trusted=yes] http://archive.debian.org/debian buster main contrib non-free
+deb [trusted=yes] http://archive.debian.org/debian-security buster/updates main contrib non-free
+EOF
+sudo sed -i 's/^\s*deb /#deb /' /etc/apt/sources.list
+echo 'Acquire::Check-Valid-Until "false";' | sudo tee /etc/apt/apt.conf.d/99no-check-valid-until
+sudo apt-get update
+```
+
+Puis, depuis le dossier du projet :
+
+```bash
+sudo bash deploy/install-buster.sh
+```
+
+Le script : installe `ocrmypdf` + Tesseract (fra/deu/ara) + poppler via l'apt de
+l'hôte ; récupère un **Python 3.11 portable** (binaire, sans compilation — ou le
+compile si aucun binaire n'existe pour l'architecture) ; crée un venv et installe
+les dépendances ; pose et démarre les 2 services systemd.
+
+Interface : `http://<ip-du-pi>:8080/` — dépôt des scans : `/var/lib/courriers-ocr/inbox/`
+
+```bash
+systemctl status courriers-ocr-worker courriers-ocr-web
+journalctl -u courriers-ocr-worker -f
+```
 
 ---
 
