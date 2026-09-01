@@ -1,10 +1,14 @@
 # Image unique servant à la fois au worker d'ingestion et au service web.
 # Basée sur Debian Bookworm : indépendante de la version de l'OS du Raspberry Pi
 # (utile si l'hôte tourne encore sous Buster / Bullseye).
-FROM python:3.12-slim-bookworm
+#
+# Python 3.11 (et non 3.12) pour coller aux roues précompilées de piwheels,
+# indispensables sur Raspberry Pi 32 bits (pydantic-core, uvloop… sont en Rust/C).
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    PIP_EXTRA_INDEX_URL=https://www.piwheels.org/simple \
     COURRIERS_DATA_DIR=/data \
     TMPDIR=/tmp
 
