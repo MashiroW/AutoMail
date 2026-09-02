@@ -126,8 +126,20 @@ def _ocr_and_extract(cfg: Config, src: Path, tmp_out: Path, tmp_txt: Path,
     if len(text.strip()) < 3:
         text = extract_text_fallback(tmp_out)
     text = clean_text(text)
-    page_count = pdf_page_count(tmp_out) or pdf_page_count(src)
-    return result, text, page_count, extract_document_date(text), guess_language(text)
+    # l'OCR a réussi : aucun de ces post-traitements ne doit faire échouer le doc
+    try:
+        page_count = pdf_page_count(tmp_out) or pdf_page_count(src)
+    except Exception:  # noqa: BLE001
+        page_count = 0
+    try:
+        doc_date = extract_document_date(text)
+    except Exception:  # noqa: BLE001
+        doc_date = None
+    try:
+        lang = guess_language(text)
+    except Exception:  # noqa: BLE001
+        lang = None
+    return result, text, page_count, doc_date, lang
 
 
 def _folder_of(rel_original: str | None) -> tuple[str, str]:
