@@ -197,5 +197,11 @@ def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):
     assert listing["items"][0]["ocr_status"] == "ok"
 
 
+def test_version(client):
+    r = client.get("/api/version")
+    assert r.status_code == 200
+    assert set(r.json()) == {"commit", "subject", "date", "dirty"}
+
+
 def test_reponse_web_racine(client):
     assert client.get("/").status_code == 200

@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import signal
+import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import Config
@@ -28,8 +32,29 @@ from .models import (
     StatsOut,
 )
 
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+REPO_DIR = Path(__file__).resolve().parent.parent   # dossier cloné
+WEB_DIR = REPO_DIR / "web"
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _git(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", "-C", str(REPO_DIR), *args],
+        capture_output=True, text=True, timeout=timeout,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
+
+
+def _version() -> dict:
+    try:
+        head = _git("log", "-1", "--format=%h\x1f%s\x1f%cd", "--date=short")
+        if head.returncode != 0:
+            return {"commit": None, "subject": None, "date": None, "dirty": False}
+        h, subj, d = head.stdout.strip().split("\x1f")
+        dirty = bool(_git("status", "--porcelain").stdout.strip())
+        return {"commit": h, "subject": subj, "date": d, "dirty": dirty}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {"commit": None, "subject": None, "date": None, "dirty": False}
 
 
 def _cpu_temp_c() -> float | None:
@@ -111,6 +136,61 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/api/version")
+    def version():
+        return _version()
+
+    @app.post("/api/update", dependencies=[Depends(auth)])
+    def update():
+        """git fetch + pull --ff-only, sortie diffusée ligne par ligne."""
+        def gen():
+            before = _version().get("commit")
+            for label, cmd in (
+                ("git fetch", ["fetch", "--all", "--prune"]),
+                ("git pull --ff-only", ["pull", "--ff-only"]),
+            ):
+                yield f"$ {label}\n"
+                try:
+                    proc = subprocess.Popen(
+                        ["git", "-C", str(REPO_DIR), *cmd],
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                    )
+                    for line in proc.stdout:  # type: ignore[union-attr]
+                        yield line
+                    proc.wait()
+                    if proc.returncode != 0:
+                        yield f"\n[échec — code {proc.returncode}]\n"
+                        return
+                except OSError as exc:
+                    yield f"\n[erreur : {exc}]\n"
+                    return
+            after = _version().get("commit")
+            yield "\n--- résumé ---\n"
+            if before == after:
+                yield "Déjà à jour.\n"
+            else:
+                yield f"{before} -> {after}\n"
+                changed = _git("diff", "--name-only", f"{before}..{after}").stdout
+                if "requirements.txt" in changed:
+                    yield ("ATTENTION : requirements.txt a changé — relance "
+                           "`sudo bash deploy/install.sh` avant de redémarrer.\n")
+                yield "Clique « Redémarrer » pour appliquer.\n"
+
+        return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
+
+    @app.post("/api/restart", dependencies=[Depends(auth)])
+    def restart_services():
+        """Sans privilège : on pose un drapeau (le worker se relance en le voyant)
+        puis ce process se termine — systemd (Restart=always) le relance sur le
+        code à jour."""
+        try:
+            (cfg.data_dir / ".restart-requested").write_text("1")
+        except OSError:
+            pass
+        threading.Timer(1.0, lambda: os.kill(os.getpid(), signal.SIGTERM)).start()
+        return {"ok": True}
 
     @app.get("/api/stats", response_model=StatsOut, dependencies=[Depends(auth)])
     def get_stats(conn=Depends(get_conn)):

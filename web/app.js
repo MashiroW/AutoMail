@@ -268,7 +268,80 @@ function syncTrashButton() {
   $("#empty-trash").hidden = $("#status").value !== "trash";
 }
 
+// --- mise à jour depuis GitHub ---------------------------------------------- //
+async function openUpdater() {
+  const log = $("#upd-log");
+  log.hidden = true; log.textContent = "";
+  $("#upd-run").hidden = false; $("#upd-run").disabled = false;
+  $("#upd-restart").hidden = true;
+  $("#upd-state").textContent = "";
+  $("#upd-current").textContent = "…";
+  $("#updater").showModal();
+  try {
+    const v = await api("/version");
+    $("#upd-current").textContent = v.commit
+      ? `Version actuelle : ${v.commit} — ${v.subject} (${v.date})${v.dirty ? " · modifs locales" : ""}`
+      : "Version actuelle : inconnue (dossier non git ?)";
+  } catch { $("#upd-current").textContent = ""; }
+}
+
+async function runUpdate() {
+  const log = $("#upd-log");
+  log.hidden = false; log.textContent = "";
+  $("#upd-run").disabled = true;
+  $("#upd-state").textContent = "en cours…";
+  try {
+    const res = await fetch("/api/update", { method: "POST" });
+    if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      log.textContent += dec.decode(value, { stream: true });
+      log.scrollTop = log.scrollHeight;
+    }
+    $("#upd-state").textContent = "terminé";
+    $("#upd-run").hidden = true;
+    $("#upd-restart").hidden = false;
+  } catch (e) {
+    log.textContent += `\n[erreur : ${e.message}]\n`;
+    $("#upd-run").disabled = false;
+    $("#upd-state").textContent = "";
+  }
+}
+
+async function restartServices() {
+  const log = $("#upd-log");
+  $("#upd-restart").disabled = true;
+  $("#upd-state").textContent = "redémarrage…";
+  try {
+    const r = await fetch("/api/restart", { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok === false) {
+      log.textContent += `\n[le redémarrage automatique a échoué : ${j.error}]\n` +
+        "Lance à la main sur le Pi :\n  sudo systemctl restart automail-worker automail-web\n";
+      $("#upd-restart").disabled = false;
+      $("#upd-state").textContent = "";
+      return;
+    }
+  } catch { /* connexion coupée = le service redémarre, c'est bon signe */ }
+  log.textContent += "\nRedémarrage en cours, rechargement de la page…\n";
+  const t0 = Date.now();
+  while (Date.now() - t0 < 60000) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const h = await fetch("/api/health", { cache: "no-store" });
+      if (h.ok) { location.reload(); return; }
+    } catch { /* pas encore revenu */ }
+  }
+  $("#upd-state").textContent = "le service met du temps à revenir — recharge la page manuellement";
+}
+
 // --- événements ---------------------------------------------------------- //
+$("#update").addEventListener("click", openUpdater);
+$("#upd-run").addEventListener("click", runUpdate);
+$("#upd-restart").addEventListener("click", restartServices);
 $("#search").addEventListener("submit", (e) => { e.preventDefault(); state.page = 1; search(); });
 $("#search").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); state.page = 1; search(); }

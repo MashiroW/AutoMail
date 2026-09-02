@@ -179,7 +179,11 @@ courrier apparaît, cherchable.
 - **Correspondant** : champ libre saisi dans la fiche (bouton *Modifier*), ensuite
   filtrable et inclus dans la recherche plein-texte.
 - Bandeau d'état : nombre de courriers, **combien sont en cours de traitement**,
-  échecs, espace disque.
+  échecs, espace disque, **température CPU du Pi** (orange ≥ 70 °C, rouge ≥ 80 °C).
+- Bouton **« Mettre à jour »** : lance `git pull` depuis GitHub, affiche la sortie
+  console dans une fenêtre, puis bouton **« Redémarrer les services »** (sans
+  privilège : les services se relancent seuls via systemd). Si `requirements.txt`
+  a changé, un message rappelle de relancer `deploy/install.sh` d'abord.
 - Chaque résultat : aperçu du PDF cherchable, **téléchargement de l'original**,
   fiche *Modifier* (toutes les infos + titre / correspondant / date / notes),
   *Réessayer* pour un échec, suppression (corbeille).

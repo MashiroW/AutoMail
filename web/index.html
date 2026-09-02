@@ -12,6 +12,7 @@
     <h1>📬 AutoMail</h1>
     <div class="head-right">
       <div id="stats" class="stats"></div>
+      <button id="update" type="button" title="Mettre à jour depuis GitHub">⬇️ Mettre à jour</button>
       <button id="theme" type="button" title="Thème clair / sombre" aria-label="Basculer le thème">🌙</button>
     </div>
   </header>
@@ -82,6 +83,23 @@
         <button type="submit" class="primary">Enregistrer</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="updater">
+    <div class="modal-head">
+      <strong>Mise à jour depuis GitHub</strong>
+      <button type="button" data-close>Fermer</button>
+    </div>
+    <div class="upd-body">
+      <p id="upd-current" class="muted"></p>
+      <pre id="upd-log" class="console" hidden></pre>
+      <div class="modal-actions">
+        <button type="button" id="upd-run" class="primary">Lancer la mise à jour</button>
+        <button type="button" id="upd-restart" class="primary" hidden>Redémarrer les services</button>
+        <span class="spacer"></span>
+        <span id="upd-state" class="muted"></span>
+      </div>
+    </div>
   </dialog>
 
   <div id="toast" class="toast" hidden></div>

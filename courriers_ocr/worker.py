@@ -148,8 +148,13 @@ def run(cfg: Config, once: bool = False) -> None:
 
     log.info("worker démarré — inbox=%s langues=%s", cfg.inbox, cfg.ocr_languages)
     pending: dict[Path, tuple[int, float, int]] = {}
+    restart_flag = cfg.data_dir / ".restart-requested"
 
     while not _stop:
+        if restart_flag.exists():   # posé par le bouton « Mettre à jour »
+            restart_flag.unlink(missing_ok=True)
+            log.info("redémarrage demandé — sortie (systemd relancera)")
+            break
         try:
             process_reocr(conn, cfg)
             auto_retry_failed(conn, cfg)
