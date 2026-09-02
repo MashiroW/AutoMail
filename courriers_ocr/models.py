@@ -19,6 +19,7 @@ class DocumentOut(BaseModel):
     ocr_language: str | None = None
     lang_guess: str | None = None
     ocr_attempts: int = 0
+    progress: str = "done"
     snippet: str | None = None
     has_thumbnail: bool = False
     notes: str | None = None
@@ -38,6 +39,7 @@ class DocumentPatch(BaseModel):
         default=None, description="'YYYY-MM-DD' ou chaîne vide pour effacer"
     )
     notes: str | None = None
+    progress: str | None = Field(default=None, examples=["todo", "ongoing", "done"])
 
 
 class ReocrRequest(BaseModel):
@@ -46,7 +48,8 @@ class ReocrRequest(BaseModel):
 
 class BulkRequest(BaseModel):
     ids: list[int]
-    action: str = Field(examples=["trash", "restore", "purge"])
+    action: str = Field(examples=["trash", "restore", "purge", "progress"])
+    value: str | None = Field(default=None, examples=["todo", "ongoing", "done"])
 
 
 class StatsOut(BaseModel):

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS documents (
     lang_guess           TEXT,
     ocr_attempts         INTEGER NOT NULL DEFAULT 0,
     last_attempt_at      TEXT,
+    progress             TEXT NOT NULL DEFAULT 'done',   -- 'todo' | 'ongoing' | 'done'
     deleted_at           TEXT
 );
 
@@ -89,6 +90,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         )
     if "last_attempt_at" not in cols:
         conn.execute("ALTER TABLE documents ADD COLUMN last_attempt_at TEXT")
+    if "progress" not in cols:
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN progress TEXT NOT NULL DEFAULT 'done'"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -98,7 +103,8 @@ _DOC_COLUMNS = {
     "sha256", "original_filename", "original_path", "ocr_path", "thumbnail_path",
     "text_path", "page_count", "bytes", "added_at", "document_date",
     "document_date_source", "correspondent", "title", "notes", "ocr_status",
-    "ocr_language", "lang_guess", "ocr_attempts", "last_attempt_at", "deleted_at",
+    "ocr_language", "lang_guess", "ocr_attempts", "last_attempt_at",
+    "progress", "deleted_at",
 }
 
 
@@ -178,6 +184,7 @@ def search_documents(
     date_to: str | None = None,
     correspondent: str | None = None,
     status: str | None = None,
+    progress: str | None = None,
     deleted: bool = False,
     sort: str = "date",
     page: int = 1,
@@ -216,6 +223,9 @@ def search_documents(
         where.append("d.ocr_status IN ('ok', 'skipped-has-text')")
     elif status == "failed":
         where.append("d.ocr_status = 'failed'")
+    if progress in ("todo", "ongoing", "done"):
+        where.append("d.progress = ?")
+        params.append(progress)
 
     if sort == "added" and not deleted:
         order = "d.added_at DESC"
@@ -227,7 +237,7 @@ def search_documents(
     ).fetchone()["n"]
 
     page = max(1, page)
-    page_size = max(1, min(200, page_size))
+    page_size = max(1, min(500, page_size))
     rows = conn.execute(
         f"""
         SELECT d.*, {select_snippet}

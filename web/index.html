@@ -9,42 +9,72 @@
 </head>
 <body>
   <header>
-    <h1>📬 AutoMail</h1>
+    <div class="brand">📬 <span>AutoMail</span></div>
     <div class="head-right">
       <div id="stats" class="stats"></div>
-      <button id="update" type="button" title="Mettre à jour depuis GitHub">⬇️ Mettre à jour</button>
-      <button id="theme" type="button" title="Thème clair / sombre" aria-label="Basculer le thème">🌙</button>
+      <button id="update" type="button" class="pill" title="Mettre à jour depuis GitHub">⟳ Mise à jour</button>
+      <button id="theme" type="button" class="icon" title="Thème clair / sombre" aria-label="Thème">🌙</button>
     </div>
   </header>
 
-  <form id="search" class="search">
-    <input type="search" id="q" placeholder="Mots présents dans le courrier…" autocomplete="off">
-    <label>du <input type="date" id="date_from"></label>
-    <label>au <input type="date" id="date_to"></label>
-    <input type="text" id="correspondent" placeholder="Correspondant" autocomplete="off">
-    <select id="status">
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Rechercher dans le texte des courriers…" autocomplete="off">
+    <label class="fld">du <input type="date" id="date_from"></label>
+    <label class="fld">au <input type="date" id="date_to"></label>
+    <select id="ocrstatus" title="Statut OCR">
       <option value="all">Tous</option>
       <option value="ok" selected>Traités</option>
-      <option value="failed">En échec</option>
-      <option value="trash">Corbeille</option>
+      <option value="failed">Échecs</option>
     </select>
-    <select id="sort">
+    <select id="progress" title="Avancement">
+      <option value="">Avancement : tous</option>
+      <option value="todo">À faire</option>
+      <option value="ongoing">En cours</option>
+      <option value="done">Fait</option>
+    </select>
+    <select id="sort" title="Tri">
       <option value="date">Date du courrier</option>
       <option value="added">Ajout récent</option>
       <option value="pertinence">Pertinence</option>
     </select>
-    <button type="submit">Rechercher</button>
-    <button type="button" id="reset" class="ghost">Réinitialiser</button>
-    <button type="button" id="empty-trash" class="danger" hidden>Vider la corbeille</button>
-  </form>
+    <button id="go" type="button" class="primary">Rechercher</button>
+    <button id="reset" type="button" class="ghost">Réinitialiser</button>
 
-  <main id="results"></main>
+    <span class="tb-spacer"></span>
+
+    <button id="trash-toggle" type="button" class="icon" title="Corbeille">🗑</button>
+    <div class="seg" id="viewseg" role="group" aria-label="Affichage">
+      <button type="button" data-view="list" title="Liste">☰</button>
+      <button type="button" data-view="detail" class="on" title="Détail">▤</button>
+      <button type="button" data-view="tiles" title="Tuiles">▦</button>
+    </div>
+    <button id="select-toggle" type="button" class="ghost">Sélectionner</button>
+  </div>
+
+  <main id="results" class="view-detail"></main>
 
   <nav id="pager" class="pager" hidden>
-    <button id="prev" type="button">‹ Précédent</button>
+    <button id="prev" type="button">‹</button>
     <span id="pageinfo"></span>
-    <button id="next" type="button">Suivant ›</button>
+    <button id="next" type="button">›</button>
+    <label class="perpage">par page
+      <select id="page_size">
+        <option>25</option>
+        <option selected>50</option>
+        <option>100</option>
+        <option>200</option>
+      </select>
+    </label>
   </nav>
+
+  <!-- barre de sélection multiple -->
+  <div id="selbar" class="selbar" hidden>
+    <label class="selall"><input type="checkbox" id="sel-all"> Toute la page</label>
+    <strong id="sel-count">0 sélectionné</strong>
+    <span class="spacer"></span>
+    <span id="sel-actions"></span>
+    <button id="select-done" type="button" class="primary">Terminer</button>
+  </div>
 
   <dialog id="preview">
     <div class="modal-head">
@@ -60,14 +90,17 @@
   <dialog id="editor">
     <form method="dialog" id="editform">
       <h2>Modifier le courrier</h2>
-
       <dl id="e-info" class="info"></dl>
-
       <label>Titre <input type="text" id="e-title"></label>
-      <label>Correspondant <input type="text" id="e-correspondent" placeholder="ex. EDF, Impôts, Ma banque…"></label>
       <label>Date du courrier <input type="date" id="e-date"></label>
+      <label>Avancement
+        <select id="e-progress">
+          <option value="todo">À faire</option>
+          <option value="ongoing">En cours</option>
+          <option value="done">Fait</option>
+        </select>
+      </label>
       <label>Notes <textarea id="e-notes" rows="2"></textarea></label>
-
       <div class="reocr">
         <span>Relancer l'OCR&nbsp;:</span>
         <button type="button" data-lang="fra">Français</button>
@@ -75,7 +108,6 @@
         <button type="button" data-lang="ara">Arabe</button>
         <button type="button" data-lang="fra+deu">FR + DE</button>
       </div>
-
       <div class="modal-actions">
         <button type="button" id="e-delete" class="danger">Supprimer</button>
         <span class="spacer"></span>
@@ -102,14 +134,6 @@
       </div>
     </div>
   </dialog>
-
-  <div id="selbar" class="selbar" hidden>
-    <label class="selall"><input type="checkbox" id="sel-all"> toute la page</label>
-    <span id="sel-count"></span>
-    <span class="spacer"></span>
-    <span id="sel-actions"></span>
-    <button type="button" id="sel-clear" class="ghost">Annuler</button>
-  </div>
 
   <div id="toast" class="toast" hidden></div>
   <script src="app.js"></script>

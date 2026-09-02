@@ -8,6 +8,8 @@ import shutil
 import signal
 import subprocess
 import threading
+import uuid
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from .config import Config
 from . import db
@@ -83,6 +86,7 @@ def _row_to_out(row: dict) -> DocumentOut:
         ocr_language=row.get("ocr_language"),
         lang_guess=row.get("lang_guess"),
         ocr_attempts=row.get("ocr_attempts") or 0,
+        progress=row.get("progress") or "done",
         snippet=row.get("snippet") or None,
         has_thumbnail=bool(row.get("thumbnail_path")),
         notes=row.get("notes"),
@@ -220,6 +224,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         date_to: str | None = Query(None, alias="date_to"),
         correspondent: str | None = None,
         status: str | None = Query(None, pattern="^(ok|failed|all|trash)?$"),
+        progress: str | None = Query(None, pattern="^(todo|ongoing|done)?$"),
         sort: str = Query("date", pattern="^(date|added|pertinence)$"),
         page: int = 1,
         page_size: int = 20,
@@ -229,7 +234,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 raise HTTPException(422, f"{label} doit être au format YYYY-MM-DD")
         rows, total = db.search_documents(
             conn, q=q, date_from=date_from, date_to=date_to,
-            correspondent=correspondent,
+            correspondent=correspondent, progress=progress or None,
             deleted=(status == "trash"),
             status=None if status in (None, "all", "trash") else status,
             sort=sort, page=page, page_size=page_size,
@@ -274,6 +279,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             fields["correspondent"] = patch.correspondent.strip() or None
         if patch.notes is not None:
             fields["notes"] = patch.notes.strip() or None
+        if patch.progress is not None:
+            if patch.progress not in ("todo", "ongoing", "done"):
+                raise HTTPException(422, "avancement invalide (todo|ongoing|done)")
+            fields["progress"] = patch.progress
         if patch.document_date is not None:
             val = patch.document_date.strip()
             if val == "":
@@ -346,10 +355,44 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         db.purge(conn, doc_id)
         return {"status": "supprimé définitivement"}
 
-    @app.post("/api/documents/bulk", dependencies=[Depends(auth)])
+    @app.get("/api/bulk/download", dependencies=[Depends(auth)])
+    def bulk_download(ids: str, conn=Depends(get_conn)):
+        id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()][:500]
+        if not id_list:
+            raise HTTPException(422, "aucun identifiant")
+        zpath = cfg.tmp_dir / f"dl-{uuid.uuid4().hex}.zip"
+        used: set[str] = set()
+        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
+            for doc_id in id_list:
+                row = db.get_document(conn, doc_id, include_deleted=True)
+                if not row or not row["original_path"]:
+                    continue
+                p = abspath(cfg, row["original_path"])
+                if not p.is_file():
+                    continue
+                base = re.sub(r'[\\/:*?"<>|]+', "_",
+                              row["title"] or Path(row["original_filename"]).stem)
+                name, i = f"{base}.pdf", 2
+                while name in used:
+                    name = f"{base} ({i}).pdf"
+                    i += 1
+                used.add(name)
+                zf.write(p, arcname=name)
+        return FileResponse(
+            zpath, media_type="application/zip", filename="courriers.zip",
+            background=BackgroundTask(lambda: zpath.unlink(missing_ok=True)),
+        )
+
+    @app.post("/api/bulk", dependencies=[Depends(auth)])
     def bulk(body: BulkRequest, conn=Depends(get_conn)):
-        if body.action not in ("trash", "restore", "purge"):
-            raise HTTPException(422, "action invalide (trash | restore | purge)")
+        if body.action not in ("trash", "restore", "purge", "progress"):
+            raise HTTPException(422, "action invalide")
+        if body.action == "progress":
+            if body.value not in ("todo", "ongoing", "done"):
+                raise HTTPException(422, "valeur d'avancement invalide")
+            for doc_id in body.ids[:1000]:
+                db.update_document(conn, doc_id, progress=body.value)
+            return {"done": len(body.ids[:1000]), "errors": []}
         done, errors = 0, []
         for doc_id in body.ids[:500]:
             try:

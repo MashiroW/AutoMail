@@ -9,9 +9,9 @@ en plus léger et sans PC allumé en permanence :
    tout le texte ;
 3. il **détecte automatiquement la date du courrier** (celle imprimée en haut),
    corrigeable dans l'interface ;
-4. il **indexe** le texte pour la recherche plein-texte + correspondant ;
+4. il **indexe** le texte pour la recherche plein-texte + avancement ;
 5. il expose sur le réseau local une **API REST + une page web** pour chercher
-   (mots-clés, plage de dates, correspondant) et **télécharger l'original** ;
+   (mots-clés, plage de dates, avancement) et **télécharger l'original** ;
 6. un courrier dont l'OCR échoue est **retenté automatiquement** (jusqu'à 3 fois).
 
 Stack : Python + FastAPI + SQLite (FTS5). Deux services systemd, aucune base
@@ -175,25 +175,31 @@ courrier apparaît, cherchable.
 
 - **Recherche mots-clés** : sur tout le texte OCR, insensible aux accents et à la
   casse, par préfixe (`convoc` trouve « convocation »).
-- **Date du courrier** : filtres « du / au » sur la date détectée.
-- **Correspondant** : champ libre saisi dans la fiche (bouton *Modifier*), ensuite
-  filtrable et inclus dans la recherche plein-texte.
-- Bandeau d'état : nombre de courriers, **combien sont en cours de traitement**,
-  échecs, espace disque, **température CPU du Pi** (orange ≥ 70 °C, rouge ≥ 80 °C).
-- Bouton **« Mettre à jour »** : lance `git pull` depuis GitHub, affiche la sortie
-  console dans une fenêtre, puis bouton **« Redémarrer les services »** (sans
-  privilège : les services se relancent seuls via systemd). Si `requirements.txt`
-  a changé, un message rappelle de relancer `deploy/install.sh` d'abord.
+- **Filtres** : date du courrier (du / au), statut OCR (traités / échecs),
+  **avancement** (à faire / en cours / fait), tri.
+- **Avancement** : chaque courrier a une pastille de couleur — *à faire*,
+  *en cours*, *fait* (défaut). Clic sur la pastille pour la faire tourner ;
+  modifiable aussi dans la fiche *Modifier* et en groupe.
+- **3 affichages** : liste / détail / tuiles (grandes vignettes), sélecteur en
+  haut à droite, mémorisé.
+- **Nombre par page** réglable en bas (25 à 200).
+- **Mode sélection** : bouton *Sélectionner* → des cases apparaissent sur les
+  cartes ; une barre propose alors les actions groupées : **télécharger en ZIP**,
+  changer l'**avancement**, **corbeille** (ou, dans la corbeille : *restaurer* /
+  *supprimer définitivement*). *Terminer* pour quitter le mode.
+- **Corbeille** : icône dans la barre d'outils. *Restaurer*, *supprimer
+  définitivement*, *vider la corbeille* — rien n'est effacé pour de bon avant ça.
 - Chaque résultat : aperçu du PDF cherchable, **téléchargement de l'original**,
-  fiche *Modifier* (toutes les infos + titre / correspondant / date / notes),
-  *Réessayer* pour un échec, suppression (corbeille).
-- **Sélection multiple** : une case à cocher sur chaque carte (ou « toute la
-  page ») fait apparaître une barre d'actions groupées — *Déplacer vers la
-  corbeille*, ou dans la corbeille *Restaurer* / *Supprimer définitivement*.
-- Onglet **Corbeille** (menu déroulant de statut) : *Restaurer* un courrier,
-  *Supprimer définitivement*, ou *Vider la corbeille*. Rien n'est effacé pour de
-  bon avant cette action.
-- Bouton 🌙 / ☀️ : thème clair / sombre (mémorisé dans le navigateur).
+  fiche *Modifier* (toutes les infos + titre / date / avancement / notes),
+  *Réessayer* pour un échec.
+- Bandeau d'état : nombre de courriers, **en cours de traitement**, échecs,
+  espace disque, **température CPU du Pi** (orange ≥ 70 °C, rouge ≥ 80 °C).
+- Bouton **« Mise à jour »** : `git pull` depuis GitHub avec la console en
+  direct, puis **« Redémarrer les services »** (sans privilège, relance via
+  systemd), et invitation à recharger (Ctrl + Maj + R).
+- Bouton 🌙 / ☀️ : thème clair / sombre (mémorisé).
+- **La liste se rafraîchit toute seule** quand le contenu change (nouveau scan,
+  OCR terminé…), sans perdre la position de lecture.
 
 ## Réglages — `config.toml`
 

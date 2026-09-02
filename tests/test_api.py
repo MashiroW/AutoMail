@@ -205,24 +205,59 @@ def test_bulk_corbeille_et_restauration(cfg, drop_letter, ingest, client):
     assert len(ids) == 3
 
     # sélection multiple -> corbeille
-    r = client.post("/api/documents/bulk", json={"ids": ids[:2], "action": "trash"})
+    r = client.post("/api/bulk", json={"ids": ids[:2], "action": "trash"})
     assert r.status_code == 200 and r.json()["done"] == 2
     assert client.get("/api/documents").json()["total"] == 1
     assert client.get("/api/documents", params={"status": "trash"}).json()["total"] == 2
 
     # restauration groupée
-    r = client.post("/api/documents/bulk", json={"ids": ids[:2], "action": "restore"})
+    r = client.post("/api/bulk", json={"ids": ids[:2], "action": "restore"})
     assert r.json()["done"] == 2
     assert client.get("/api/documents").json()["total"] == 3
 
     # purge groupée depuis la corbeille
-    client.post("/api/documents/bulk", json={"ids": ids, "action": "trash"})
-    r = client.post("/api/documents/bulk", json={"ids": ids, "action": "purge"})
+    client.post("/api/bulk", json={"ids": ids, "action": "trash"})
+    r = client.post("/api/bulk", json={"ids": ids, "action": "purge"})
     assert r.json()["done"] == 3
     assert client.get("/api/documents", params={"status": "trash"}).json()["total"] == 0
 
     # action inconnue
-    assert client.post("/api/documents/bulk", json={"ids": [1], "action": "x"}).status_code == 422
+    assert client.post("/api/bulk", json={"ids": [1], "action": "x"}).status_code == 422
+
+
+def test_progress_defaut_et_patch_et_filtre(cfg, drop_letter, ingest, client):
+    for n in ("p1", "p2"):
+        drop_letter(n, LETTER, pdf_bytes=f"%PDF-1.4 {n}\n%%EOF".encode())
+    ingest()
+    items = client.get("/api/documents").json()["items"]
+    assert all(d["progress"] == "done" for d in items)   # défaut = fait
+    a, b = items[0]["id"], items[1]["id"]
+
+    assert client.patch(f"/api/documents/{a}", json={"progress": "ongoing"}).json()["progress"] == "ongoing"
+    assert client.patch(f"/api/documents/{a}", json={"progress": "nope"}).status_code == 422
+
+    got = client.get("/api/documents", params={"progress": "ongoing"}).json()
+    assert got["total"] == 1 and got["items"][0]["id"] == a
+
+
+def test_bulk_progress_et_download(cfg, drop_letter, ingest, client):
+    for n in ("d1", "d2", "d3"):
+        drop_letter(n, LETTER, pdf_bytes=f"%PDF-1.4 {n}\n%%EOF".encode())
+    ingest()
+    ids = [d["id"] for d in client.get("/api/documents").json()["items"]]
+
+    r = client.post("/api/bulk",
+                    json={"ids": ids, "action": "progress", "value": "todo"})
+    assert r.status_code == 200 and r.json()["done"] == 3
+    assert client.get("/api/documents", params={"progress": "todo"}).json()["total"] == 3
+    assert client.post("/api/bulk",
+                       json={"ids": ids, "action": "progress", "value": "x"}).status_code == 422
+
+    import io, zipfile
+    r = client.get("/api/bulk/download", params={"ids": ",".join(map(str, ids))})
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    assert len(zf.namelist()) == 3
 
 
 def test_version(client):
