@@ -182,7 +182,10 @@ courrier apparaît, cherchable.
   échecs, espace disque.
 - Chaque résultat : aperçu du PDF cherchable, **téléchargement de l'original**,
   fiche *Modifier* (toutes les infos + titre / correspondant / date / notes),
-  *Réessayer* pour un échec, corbeille.
+  *Réessayer* pour un échec, suppression (corbeille).
+- Onglet **Corbeille** (menu déroulant de statut) : *Restaurer* un courrier,
+  *Supprimer définitivement*, ou *Vider la corbeille*. Rien n'est effacé pour de
+  bon avant cette action.
 - Bouton 🌙 / ☀️ : thème clair / sombre (mémorisé dans le navigateur).
 
 ## Réglages — `config.toml`

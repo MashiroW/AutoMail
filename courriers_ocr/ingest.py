@@ -61,6 +61,49 @@ def _year_month(iso_date: str | None) -> tuple[str, str]:
     return f"{today.year:04d}", f"{today.month:02d}"
 
 
+_TRASH_KEYS = (
+    ("original_path", "original"),
+    ("ocr_path", "ocr"),
+    ("thumbnail_path", "thumb"),
+    ("text_path", "text"),
+)
+
+
+def move_to_trash(cfg: Config, row: dict) -> None:
+    """Déplace les fichiers d'un courrier vers data/trash/<id>/<role>/."""
+    base = cfg.trash_dir / str(row["id"])
+    for key, short in _TRASH_KEYS:
+        if row[key]:
+            p = abspath(cfg, row[key])
+            if p.is_file():
+                dest = base / short / p.name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(p), str(dest))
+
+
+def restore_from_trash(cfg: Config, row: dict) -> str:
+    """Remet les fichiers en place. Renvoie le texte OCR (pour réindexer)."""
+    base = cfg.trash_dir / str(row["id"])
+    for key, short in _TRASH_KEYS:
+        if row[key]:
+            src = base / short / Path(row[key]).name
+            if src.is_file():
+                dst = abspath(cfg, row[key])
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
+    text = ""
+    if row["text_path"]:
+        tp = abspath(cfg, row["text_path"])
+        if tp.is_file():
+            text = tp.read_text(encoding="utf-8", errors="replace")
+    shutil.rmtree(base, ignore_errors=True)
+    return text
+
+
+def purge_trash_dir(cfg: Config, doc_id: int) -> None:
+    shutil.rmtree(cfg.trash_dir / str(doc_id), ignore_errors=True)
+
+
 def _unique(path: Path) -> Path:
     if not path.exists():
         return path

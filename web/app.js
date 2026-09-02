@@ -88,15 +88,16 @@ async function search() {
 
 function render(items) {
   const results = $("#results");
+  const isTrash = $("#status").value === "trash";
   if (!items.length) {
-    results.innerHTML = `<p class="empty">Aucun courrier trouvé.</p>`;
+    results.innerHTML = `<p class="empty">${isTrash ? "La corbeille est vide." : "Aucun courrier trouvé."}</p>`;
     return;
   }
   results.innerHTML = "";
   for (const doc of items) {
     const card = document.createElement("article");
     card.className = "card";
-    const thumb = doc.has_thumbnail
+    const thumb = (!isTrash && doc.has_thumbnail)
       ? `<img class="thumb" src="/api/documents/${doc.id}/thumbnail" alt="" loading="lazy">`
       : `<div class="thumb"></div>`;
 
@@ -106,13 +107,19 @@ function render(items) {
     if (doc.lang_guess && doc.lang_guess !== "fr")
       badges.push(`<span class="badge lang">langue&nbsp;? ${LANGS[doc.lang_guess] || doc.lang_guess}</span>`);
 
-    const actions = doc.ocr_status === "failed"
-      ? `<button data-act="retry" data-id="${doc.id}">Réessayer</button>
-         <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
-         <button data-act="edit" data-id="${doc.id}">Modifier</button>`
-      : `<button data-act="preview" data-id="${doc.id}">Aperçu</button>
+    let actions;
+    if (isTrash) {
+      actions = `<button data-act="restore" data-id="${doc.id}">Restaurer</button>
+         <button data-act="purge" data-id="${doc.id}" class="danger">Supprimer définitivement</button>`;
+    } else if (doc.ocr_status === "failed") {
+      actions = `<button data-act="retry" data-id="${doc.id}">Réessayer</button>
          <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
          <button data-act="edit" data-id="${doc.id}">Modifier</button>`;
+    } else {
+      actions = `<button data-act="preview" data-id="${doc.id}">Aperçu</button>
+         <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
+         <button data-act="edit" data-id="${doc.id}">Modifier</button>`;
+    }
 
     card.innerHTML = `
       ${thumb}
@@ -226,13 +233,45 @@ async function retry(id) {
   } catch (e) { toast("Erreur : " + e.message); }
 }
 
+async function restore(id) {
+  try {
+    await api(`/documents/${id}/restore`, { method: "POST" });
+    toast("Courrier restauré");
+    search(); loadStats();
+  } catch (e) { toast("Erreur : " + e.message); }
+}
+
+async function purge(id) {
+  if (!confirm("Supprimer définitivement ce courrier ? (irréversible)")) return;
+  try {
+    await api(`/documents/${id}/purge`, { method: "DELETE" });
+    toast("Supprimé définitivement");
+    search(); loadStats();
+  } catch (e) { toast("Erreur : " + e.message); }
+}
+
+async function emptyTrash() {
+  if (!confirm("Vider la corbeille ? Tous les courriers dedans seront supprimés définitivement.")) return;
+  try {
+    const r = await api("/trash/empty", { method: "POST" });
+    toast(`Corbeille vidée (${r.count})`);
+    search(); loadStats();
+  } catch (e) { toast("Erreur : " + e.message); }
+}
+
+function syncTrashButton() {
+  $("#empty-trash").hidden = $("#status").value !== "trash";
+}
+
 // --- événements ---------------------------------------------------------- //
 $("#search").addEventListener("submit", (e) => { e.preventDefault(); state.page = 1; search(); });
 $("#search").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); state.page = 1; search(); }
 });
+$("#status").addEventListener("change", () => { syncTrashButton(); state.page = 1; search(); });
+$("#empty-trash").addEventListener("click", emptyTrash);
 $("#reset").addEventListener("click", () => {
-  $("#search").reset(); $("#status").value = "ok"; state.page = 1; search();
+  $("#search").reset(); $("#status").value = "ok"; syncTrashButton(); state.page = 1; search();
 });
 $("#prev").addEventListener("click", () => { if (state.page > 1) { state.page--; search(); } });
 $("#next").addEventListener("click", () => { state.page++; search(); });
@@ -241,7 +280,7 @@ $("#results").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const id = Number(btn.dataset.id);
-  ({ preview: openPreview, edit: openEditor, retry })[btn.dataset.act]?.(id);
+  ({ preview: openPreview, edit: openEditor, retry, restore, purge })[btn.dataset.act]?.(id);
 });
 
 $("#editform").addEventListener("submit", (e) => { e.preventDefault(); saveEditor(); });
@@ -253,6 +292,7 @@ document.querySelectorAll("[data-close]").forEach((b) =>
 $("#preview").addEventListener("close", () => ($("#preview-frame").src = "about:blank"));
 
 // --- démarrage --------------------------------------------------------- //
+syncTrashButton();
 loadStats();
 search();
 setInterval(loadStats, 15000);

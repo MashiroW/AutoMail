@@ -14,7 +14,12 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Config
 from . import db
-from .ingest import abspath, rel, safe_name
+from .ingest import (
+    abspath,
+    move_to_trash,
+    purge_trash_dir,
+    restore_from_trash,
+)
 from .models import (
     DocumentOut,
     DocumentPatch,
@@ -112,7 +117,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         date_from: str | None = Query(None, alias="date_from"),
         date_to: str | None = Query(None, alias="date_to"),
         correspondent: str | None = None,
-        status: str | None = Query(None, pattern="^(ok|failed|all)?$"),
+        status: str | None = Query(None, pattern="^(ok|failed|all|trash)?$"),
         sort: str = Query("date", pattern="^(date|added|pertinence)$"),
         page: int = 1,
         page_size: int = 20,
@@ -123,7 +128,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         rows, total = db.search_documents(
             conn, q=q, date_from=date_from, date_to=date_to,
             correspondent=correspondent,
-            status=None if status in (None, "all") else status,
+            deleted=(status == "trash"),
+            status=None if status in (None, "all", "trash") else status,
             sort=sort, page=page, page_size=page_size,
         )
         return SearchResponse(
@@ -215,15 +221,36 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         row = db.get_document(conn, doc_id)
         if not row:
             raise HTTPException(404, "courrier introuvable")
-        trash = cfg.trash_dir / str(doc_id)
-        trash.mkdir(parents=True, exist_ok=True)
-        for key in ("original_path", "ocr_path", "thumbnail_path", "text_path"):
-            if row[key]:
-                p = abspath(cfg, row[key])
-                if p.is_file():
-                    shutil.move(str(p), str(trash / p.name))
+        move_to_trash(cfg, row)
         db.soft_delete(conn, doc_id)
         return {"status": "déplacé dans la corbeille"}
+
+    @app.post("/api/documents/{doc_id}/restore", dependencies=[Depends(auth)])
+    def restore_one(doc_id: int, conn=Depends(get_conn)):
+        row = db.get_document(conn, doc_id, include_deleted=True)
+        if not row or not row["deleted_at"]:
+            raise HTTPException(404, "aucun courrier dans la corbeille avec cet id")
+        text = restore_from_trash(cfg, row)
+        db.restore(conn, doc_id)
+        db.set_fts(conn, doc_id, text, row["title"], row["correspondent"])
+        return {"status": "restauré"}
+
+    @app.delete("/api/documents/{doc_id}/purge", dependencies=[Depends(auth)])
+    def purge_one(doc_id: int, conn=Depends(get_conn)):
+        row = db.get_document(conn, doc_id, include_deleted=True)
+        if not row or not row["deleted_at"]:
+            raise HTTPException(404, "aucun courrier dans la corbeille avec cet id")
+        purge_trash_dir(cfg, doc_id)
+        db.purge(conn, doc_id)
+        return {"status": "supprimé définitivement"}
+
+    @app.post("/api/trash/empty", dependencies=[Depends(auth)])
+    def empty_trash(conn=Depends(get_conn)):
+        ids = db.trashed_ids(conn)
+        for i in ids:
+            purge_trash_dir(cfg, i)
+            db.purge(conn, i)
+        return {"status": "corbeille vidée", "count": len(ids)}
 
     # ------------------------------------------------------------------ #
     #  Fichiers                                                          #

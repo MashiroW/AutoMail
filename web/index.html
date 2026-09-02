@@ -25,6 +25,7 @@
       <option value="all">Tous</option>
       <option value="ok" selected>Traités</option>
       <option value="failed">En échec</option>
+      <option value="trash">Corbeille</option>
     </select>
     <select id="sort">
       <option value="date">Date du courrier</option>
@@ -33,6 +34,7 @@
     </select>
     <button type="submit">Rechercher</button>
     <button type="button" id="reset" class="ghost">Réinitialiser</button>
+    <button type="button" id="empty-trash" class="danger" hidden>Vider la corbeille</button>
   </form>
 
   <main id="results"></main>

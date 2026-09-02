@@ -178,17 +178,20 @@ def search_documents(
     date_to: str | None = None,
     correspondent: str | None = None,
     status: str | None = None,
+    deleted: bool = False,
     sort: str = "date",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict], int]:
-    where = ["d.deleted_at IS NULL"]
+    where = ["d.deleted_at IS NOT NULL" if deleted else "d.deleted_at IS NULL"]
     params: list[Any] = []
     joins = ""
     select_snippet = "'' AS snippet"
     order = "d.document_date IS NULL, d.document_date DESC, d.added_at DESC"
+    if deleted:
+        order = "d.deleted_at DESC"
 
-    if q:
+    if q and not deleted:
         match = build_match_query(q)
         if match:
             joins = "JOIN documents_fts f ON f.rowid = d.id"
@@ -214,7 +217,7 @@ def search_documents(
     elif status == "failed":
         where.append("d.ocr_status = 'failed'")
 
-    if sort == "added":
+    if sort == "added" and not deleted:
         order = "d.added_at DESC"
 
     where_sql = " AND ".join(where)
@@ -254,6 +257,23 @@ def soft_delete(conn: sqlite3.Connection, doc_id: int) -> None:
         "UPDATE documents SET deleted_at = ? WHERE id = ?", (now_iso(), doc_id)
     )
     delete_fts(conn, doc_id)
+
+
+def restore(conn: sqlite3.Connection, doc_id: int) -> None:
+    conn.execute("UPDATE documents SET deleted_at = NULL WHERE id = ?", (doc_id,))
+
+
+def purge(conn: sqlite3.Connection, doc_id: int) -> None:
+    """Suppression définitive de la ligne (la corbeille)."""
+    delete_fts(conn, doc_id)
+    conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+
+def trashed_ids(conn: sqlite3.Connection) -> list[int]:
+    return [
+        r["id"] for r in
+        conn.execute("SELECT id FROM documents WHERE deleted_at IS NOT NULL")
+    ]
 
 
 def retryable_failures(conn: sqlite3.Connection, older_than_iso: str) -> list[dict]:

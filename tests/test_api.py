@@ -100,14 +100,48 @@ def test_reocr_langue_invalide(cfg, drop_letter, ingest, client):
     assert r.status_code == 422
 
 
-def test_delete_deplace_en_corbeille(cfg, drop_letter, ingest, client):
+def test_corbeille_supprimer_restaurer_vider(cfg, drop_letter, ingest, client):
     drop_letter("apoubelle", LETTER)
     ingest()
     doc_id = client.get("/api/documents").json()["items"][0]["id"]
 
+    # supprimer -> corbeille
     assert client.delete(f"/api/documents/{doc_id}").status_code == 200
     assert client.get(f"/api/documents/{doc_id}").status_code == 404
-    assert any((cfg.trash_dir / str(doc_id)).glob("*.pdf"))
+    assert list((cfg.trash_dir / str(doc_id)).rglob("*.pdf"))
+    assert client.get("/api/documents").json()["total"] == 0
+
+    # onglet corbeille
+    trash = client.get("/api/documents", params={"status": "trash"}).json()
+    assert trash["total"] == 1 and trash["items"][0]["id"] == doc_id
+
+    # restaurer
+    assert client.post(f"/api/documents/{doc_id}/restore").status_code == 200
+    assert client.get("/api/documents").json()["total"] == 1
+    assert not (cfg.trash_dir / str(doc_id)).exists()
+    # cherchable de nouveau (réindexé)
+    assert client.get("/api/documents", params={"q": "électricité"}).json()["total"] == 1
+
+    # re-supprimer puis vider la corbeille
+    client.delete(f"/api/documents/{doc_id}")
+    r = client.post("/api/trash/empty")
+    assert r.status_code == 200 and r.json()["count"] == 1
+    assert client.get("/api/documents", params={"status": "trash"}).json()["total"] == 0
+    assert client.get(f"/api/documents/{doc_id}").status_code == 404
+
+
+def test_purge_definitif(cfg, drop_letter, ingest, client):
+    drop_letter("purge", LETTER)
+    ingest()
+    doc_id = client.get("/api/documents").json()["items"][0]["id"]
+    client.delete(f"/api/documents/{doc_id}")
+    assert client.delete(f"/api/documents/{doc_id}/purge").status_code == 200
+    assert not (cfg.trash_dir / str(doc_id)).exists()
+    # purge d'un courrier non supprimé -> 404
+    drop_letter("vivant", LETTER, pdf_bytes=b"%PDF-1.4 v\n%%EOF")
+    ingest()
+    live = client.get("/api/documents").json()["items"][0]["id"]
+    assert client.delete(f"/api/documents/{live}/purge").status_code == 404
 
 
 def _make_failed(cfg, conn, name="rate", attempts=3):
