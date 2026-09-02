@@ -146,6 +146,7 @@ function currentQuery() {
   } else {
     p.set("status", $("#ocrstatus").value);
     if (state.progFilter) p.set("progress", state.progFilter);
+    if ($("#nodate").checked) p.set("no_date", "1");
   }
   p.set("sort", $("#sort").value);
   p.set("page", state.page);
@@ -207,6 +208,9 @@ function render(items) {
       badges.push(`<span class="badge fail">échec OCR (${doc.ocr_attempts}×)</span>`);
     if (doc.lang_guess && doc.lang_guess !== "fr")
       badges.push(`<span class="badge lang">langue&nbsp;? ${LANGS[doc.lang_guess] || doc.lang_guess}</span>`);
+    if (!state.trash && !doc.document_date &&
+        (doc.ocr_status === "ok" || doc.ocr_status === "skipped-has-text"))
+      badges.push(`<span class="badge nodate">date non détectée</span>`);
 
     const btn = (extra, ic, label) => `<button ${extra} title="${label}">${ic}<span>${label}</span></button>`;
     const dl = `<a class="btn" href="/api/documents/${doc.id}/download" title="Télécharger">${IC.download}<span>Télécharger</span></a>`;
@@ -522,6 +526,7 @@ function setTrash(on) {
   state.trash = on;
   $("#trash-toggle").classList.toggle("on", on);
   $("#ocrstatus").disabled = on;
+  $("#nodate").disabled = on;
   $("#progseg").querySelectorAll("button").forEach((b) => (b.disabled = on));
   $("#empty-trash")?.remove();
   if (on) {
@@ -550,9 +555,11 @@ $("#progseg").addEventListener("click", (e) => {
   setProgFilter(b.dataset.pf); state.page = 1; search();
 });
 $("#sort").addEventListener("change", () => { state.page = 1; search(); });
+$("#nodate").addEventListener("change", () => { state.page = 1; search(); });
 $("#reset").addEventListener("click", () => {
   for (const id of ["q", "date_from", "date_to"]) $("#" + id).value = "";
   $("#ocrstatus").value = "ok"; setProgFilter(""); $("#sort").value = "date";
+  $("#nodate").checked = false;
   clearSelection(); state.page = 1; search();
 });
 $("#prev").addEventListener("click", () => { if (state.page > 1) { clearSelection(); state.page--; search(); } });

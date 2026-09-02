@@ -182,6 +182,16 @@ def build_match_query(q: str) -> str:
     return " ".join(parts)
 
 
+# tris disponibles pour l'UI ; « date » = date du courrier détectée par l'OCR,
+# « added » = date d'importation dans AutoMail
+_SORTS = {
+    "date": "d.document_date IS NULL, d.document_date DESC, d.added_at DESC, d.id DESC",
+    "date_asc": "d.document_date IS NULL, d.document_date ASC, d.added_at ASC, d.id ASC",
+    "added": "d.added_at DESC, d.id DESC",
+    "added_asc": "d.added_at ASC, d.id ASC",
+}
+
+
 def search_documents(
     conn: sqlite3.Connection,
     *,
@@ -191,6 +201,7 @@ def search_documents(
     correspondent: str | None = None,
     status: str | None = None,
     progress: str | None = None,
+    no_date: bool = False,
     deleted: bool = False,
     sort: str = "date",
     page: int = 1,
@@ -200,9 +211,7 @@ def search_documents(
     params: list[Any] = []
     joins = ""
     select_snippet = "'' AS snippet"
-    order = "d.document_date IS NULL, d.document_date DESC, d.added_at DESC"
-    if deleted:
-        order = "d.deleted_at DESC"
+    order = "d.deleted_at DESC" if deleted else _SORTS.get(sort, _SORTS["date"])
 
     if q and not deleted:
         match = build_match_query(q)
@@ -213,7 +222,7 @@ def search_documents(
             select_snippet = (
                 "snippet(documents_fts, 0, '<mark>', '</mark>', ' ... ', 12) AS snippet"
             )
-            if sort in ("date", "pertinence"):
+            if sort == "pertinence":
                 order = "bm25(documents_fts), d.document_date DESC"
 
     if date_from:
@@ -236,9 +245,8 @@ def search_documents(
     if progress in ("todo", "ongoing", "done"):
         where.append("d.progress = ?")
         params.append(progress)
-
-    if sort == "added" and not deleted:
-        order = "d.added_at DESC"
+    if no_date:
+        where.append("d.document_date IS NULL")
 
     where_sql = " AND ".join(where)
 

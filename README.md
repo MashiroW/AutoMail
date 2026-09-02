@@ -202,8 +202,14 @@ courrier apparaît, cherchable.
   casse, par préfixe (`convoc` trouve « convocation »).
 - **Filtres** : date, **OCR** (menu gris : tous / traités / *en attente* /
   *en cours* / échecs), **Suivi** (pastilles colorées : tous / à faire / en
-  cours / fait), tri. Les deux sont distincts : l'un = l'état de l'OCR, l'autre
+  cours / fait). Les deux sont distincts : l'un = l'état de l'OCR, l'autre
   = l'action à mener sur le courrier.
+- **Tri** : par *date du courrier* (celle détectée par l'OCR) ou par *date
+  d'import* (arrivée dans AutoMail), chacune en ordre croissant ou décroissant ;
+  plus « pertinence » quand une recherche texte est active.
+- **« sans date détectée »** : case à cocher qui n'affiche que les courriers
+  dont l'OCR n'a pas réussi à trouver de date — à compléter à la main dans la
+  fiche *Modifier*. Ces courriers portent aussi un badge orange dans la liste.
 - Un **échec** d'OCR affiche sa **raison** sur la carte et dans la fiche ; le
   courrier reste ouvrable / téléchargeable. Le 2ᵉ essai automatique passe en
   `--force-ocr` (rasterisation, plus robuste).

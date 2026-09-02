@@ -158,6 +158,8 @@ button.on, .icon.on { background: var(--accent-soft); border-color: var(--accent
 .searchbox input { flex: 1; border: 0; background: transparent; padding: .42rem 0; }
 .searchbox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .toolbar .fld { display: flex; align-items: center; gap: .3rem; color: var(--muted); font-size: .82rem; }
+.toolbar .fld.chk { cursor: pointer; }
+.toolbar .fld.chk input { width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
 .tb-spacer { flex: 1; }
 
 /* ---------- results ---------- */
@@ -196,6 +198,7 @@ main.view-tiles { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); 
 .badge.fail { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
 .badge.lang { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 .badge.busy { background: var(--accent-soft); color: var(--accent); }
+.badge.nodate { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 .actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .55rem; }
 .actions button, .actions .btn { font-size: .8rem; padding: .32rem .55rem; text-decoration: none; }
 

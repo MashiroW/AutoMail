@@ -62,10 +62,15 @@
         <button type="button" data-pf="done" class="p-done">Fait</button>
       </div>
       <select id="sort" title="Tri">
-        <option value="date">Date du courrier</option>
-        <option value="added">Ajout récent</option>
+        <option value="date">Date du courrier (récent → ancien)</option>
+        <option value="date_asc">Date du courrier (ancien → récent)</option>
+        <option value="added">Date d'import (récent → ancien)</option>
+        <option value="added_asc">Date d'import (ancien → récent)</option>
         <option value="pertinence">Pertinence</option>
       </select>
+      <label class="fld chk" title="Uniquement les courriers dont l'OCR n'a pas trouvé de date">
+        <input type="checkbox" id="nodate"> sans date détectée
+      </label>
       <button id="go" type="button" class="primary">Rechercher</button>
       <button id="reset" type="button" class="ghost">Réinitialiser</button>
 

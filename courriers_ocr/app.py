@@ -231,7 +231,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         correspondent: str | None = None,
         status: str | None = Query(None, pattern="^(ok|failed|pending|processing|all|trash)?$"),
         progress: str | None = Query(None, pattern="^(todo|ongoing|done)?$"),
-        sort: str = Query("date", pattern="^(date|added|pertinence)$"),
+        sort: str = Query("date", pattern="^(date|date_asc|added|added_asc|pertinence)$"),
+        no_date: bool = Query(False),
         page: int = 1,
         page_size: int = 20,
     ):
@@ -241,6 +242,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         rows, total = db.search_documents(
             conn, q=q, date_from=date_from, date_to=date_to,
             correspondent=correspondent, progress=progress or None,
+            no_date=no_date,
             deleted=(status == "trash"),
             status=None if status in (None, "all", "trash") else status,
             sort=sort, page=page, page_size=page_size,

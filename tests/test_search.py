@@ -72,6 +72,34 @@ def test_tri_par_date_desc_par_defaut(conn):
     assert [i["title"] for i in items[:2]] == ["Recent", "Vieux"]
 
 
+def test_tri_par_date_du_courrier_croissant(conn):
+    _add(conn, text="a", title="Vieux", document_date="2020-01-01")
+    _add(conn, text="b", title="Recent", document_date="2025-01-01")
+
+    items, _ = db.search_documents(conn, sort="date_asc")
+    assert [i["title"] for i in items[:2]] == ["Vieux", "Recent"]
+
+
+def test_tri_par_date_import(conn):
+    d1 = _add(conn, text="a", title="Import1", document_date="2025-01-01")
+    d2 = _add(conn, text="b", title="Import2", document_date="2019-01-01")
+
+    recent_first, _ = db.search_documents(conn, sort="added")
+    oldest_first, _ = db.search_documents(conn, sort="added_asc")
+    assert [i["id"] for i in recent_first[:2]] == [d2, d1]
+    assert [i["id"] for i in oldest_first[:2]] == [d1, d2]
+
+
+def test_filtre_sans_date_detectee(conn):
+    _add(conn, text="a", title="AvecDate", document_date="2024-03-01")
+    _add(conn, text="b", title="SansDate1")
+    _add(conn, text="c", title="SansDate2")
+
+    items, total = db.search_documents(conn, no_date=True)
+    assert total == 2
+    assert {i["title"] for i in items} == {"SansDate1", "SansDate2"}
+
+
 def test_pagination(conn):
     for i in range(25):
         _add(conn, text=f"courrier {i}", title=f"C{i:02d}", document_date="2024-01-01")
