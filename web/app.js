@@ -19,7 +19,7 @@ const state = {
 };
 
 const LANGS = { fra: "français", deu: "allemand", ara: "arabe", eng: "anglais", fr: "français", de: "allemand", en: "anglais" };
-const OCRSTATUS = { pending: "en attente", ok: "OK", "skipped-has-text": "texte conservé", failed: "échec" };
+const OCRSTATUS = { pending: "en attente", processing: "en cours", ok: "OK", "skipped-has-text": "texte conservé", failed: "échec" };
 const PROG = {
   todo: ["À faire", "prog-todo"],
   ongoing: ["En cours", "prog-ongoing"],
@@ -168,6 +168,8 @@ function render(items) {
 
     const badges = [];
     if (doc.ocr_status === "pending")
+      badges.push(`<span class="badge busy">en attente d'OCR</span>`);
+    if (doc.ocr_status === "processing")
       badges.push(`<span class="badge busy">OCR en cours…</span>`);
     if (doc.ocr_status === "failed")
       badges.push(`<span class="badge fail">échec OCR (${doc.ocr_attempts}×)</span>`);
@@ -183,10 +185,12 @@ function render(items) {
       actions = btn(`data-act="restore" data-id="${doc.id}"`, IC.restore, "Restaurer") +
         `<button data-act="purge" data-id="${doc.id}" class="danger" title="Supprimer">${IC.trash}<span>Supprimer</span></button>`;
     } else if (doc.ocr_status === "failed") {
-      actions = btn(`data-act="retry" data-id="${doc.id}"`, IC.retry, "Réessayer") + dl + edit;
+      actions = view + btn(`data-act="retry" data-id="${doc.id}"`, IC.retry, "Réessayer") + dl + edit;
     } else {
       actions = view + dl + edit;
     }
+    const failReason = (doc.ocr_status === "failed" && doc.notes)
+      ? `<div class="failreason">⚠ ${esc(doc.notes)}</div>` : "";
 
     const [plabel, pcls] = PROG[doc.progress] || PROG.done;
     const pill = state.trash ? "" :
@@ -206,6 +210,7 @@ function render(items) {
           ${doc.bytes ? " · " + fmtBytes(doc.bytes) : ""}
         </div>
         ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
+        ${failReason}
         ${doc.snippet ? `<div class="snippet">${doc.snippet}</div>` : ""}
         <div class="actions">${actions}</div>
       </div>`;
@@ -294,9 +299,10 @@ async function loadStats() {
   let s;
   try { s = await api("/stats"); } catch { return; }
   const parts = [`<b>${s.total}</b> courriers`];
-  const inFlight = (s.pending || 0) + (s.reprocessing || 0);
+  const inFlight = (s.pending || 0) + (s.processing || 0) + (s.reprocessing || 0);
   const prevInFlight = state.lastInFlight;
-  if (s.pending) parts.push(`<span class="busy">${s.pending} non traité${s.pending > 1 ? "s" : ""}</span>`);
+  if (s.pending) parts.push(`<span class="busy">${s.pending} en attente</span>`);
+  if (s.processing) parts.push(`<span class="busy">${s.processing} en cours</span>`);
   if (s.reprocessing) parts.push(`<span class="busy">${s.reprocessing} en ré-OCR</span>`);
   if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
   parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
@@ -309,7 +315,7 @@ async function loadStats() {
 
   // rafraîchit la liste si l'état a changé OU si un traitement est/était en cours
   // (un courrier qui passe non traité -> traité ne bouge aucun compteur global)
-  const sig = [s.total, s.failed, s.pending, s.reprocessing, s.trashed, s.last_added].join("|");
+  const sig = [s.total, s.failed, s.pending, s.processing, s.reprocessing, s.trashed, s.last_added].join("|");
   const shouldRefresh =
     (state.statsSig !== null && sig !== state.statsSig) ||
     inFlight > 0 || prevInFlight > 0;
@@ -344,7 +350,8 @@ async function openEditor(id) {
     <dt>Pages</dt><dd>${d.page_count ?? "?"}</dd>
     <dt>Taille</dt><dd>${fmtBytes(d.bytes) || "?"}</dd>
     <dt>OCR</dt><dd>${OCRSTATUS[d.ocr_status] || d.ocr_status}${d.ocr_language ? " · " + (LANGS[d.ocr_language] || d.ocr_language) : ""}</dd>
-    <dt>Date</dt><dd>${fmtDate(d.document_date)}${d.document_date ? " (" + (d.document_date_source === "manual" ? "saisie" : "détectée") + ")" : ""}</dd>`;
+    <dt>Date</dt><dd>${fmtDate(d.document_date)}${d.document_date ? " (" + (d.document_date_source === "manual" ? "saisie" : "détectée") + ")" : ""}</dd>
+    ${d.ocr_status === "failed" && d.notes ? `<dt>Erreur</dt><dd class="err">${esc(d.notes)}</dd>` : ""}`;
   $("#editor").showModal();
 }
 async function saveEditor() {

@@ -186,6 +186,10 @@ main.view-tiles { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); 
 .card h3 { margin: 0; font-size: .98rem; font-weight: 650; flex: 1; overflow-wrap: anywhere; }
 .card .meta { color: var(--muted); font-size: .8rem; margin-top: .15rem; font-variant-numeric: tabular-nums; }
 .card .snippet { font-size: .85rem; margin-top: .35rem; max-height: 4.4em; overflow: hidden; }
+.card .failreason { margin-top: .35rem; font-size: .78rem; color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent); border-radius: 7px;
+  padding: .3rem .5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info dd.err { color: var(--danger); white-space: normal; }
 .card .snippet mark { background: var(--mark); color: var(--mark-ink); border-radius: 3px; padding: 0 .1em; }
 .badges { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
 .badge { font-size: .7rem; padding: .08rem .45rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }

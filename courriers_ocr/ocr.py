@@ -32,8 +32,14 @@ def run_ocr(
     sidecar_txt: Path,
     languages: str,
     cfg: Config,
+    force_ocr: bool = False,
 ) -> OcrResult:
-    """Produit `out_pdf` (PDF cherchable) et `sidecar_txt` (texte OCR)."""
+    """Produit `out_pdf` (PDF cherchable) et `sidecar_txt` (texte OCR).
+
+    `force_ocr` (ou cfg.ocr_force) : --force-ocr, rasterise chaque page et
+    ré-OCRise tout. Plus lent et sortie plus lourde, mais contourne les PDF
+    à structure exotique (souvent la cause d'un « damaged file » de qpdf).
+    """
     if cfg.fake_ocr:
         return _fake_ocr(src_pdf, out_pdf, sidecar_txt, languages)
 
@@ -43,7 +49,9 @@ def run_ocr(
         "--output-type", cfg.ocr_output_type,
         "--sidecar", str(sidecar_txt),
     ]
-    if cfg.ocr_skip_text:
+    if force_ocr or cfg.ocr_force:
+        cmd.append("--force-ocr")
+    elif cfg.ocr_skip_text:
         cmd.append("--skip-text")
     cmd += list(cfg.ocr_extra_args)
     cmd += [str(src_pdf), str(out_pdf)]

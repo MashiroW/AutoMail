@@ -166,6 +166,17 @@ def test_retry_remet_le_compteur_a_zero(cfg, conn, client):
     assert got["ocr_attempts"] == 0 and got["ocr_status"] == "failed"
 
 
+def test_courrier_en_echec_ouvrable_et_raison_visible(cfg, conn, client):
+    doc_id = _make_failed(cfg, conn, attempts=1)
+    d = client.get(f"/api/documents/{doc_id}").json()
+    assert d["notes"] == "boom"                       # raison de l'échec exposée
+    # aperçu + téléchargement possibles (l'original est sur le disque)
+    assert client.get(f"/api/documents/{doc_id}/pdf").status_code == 200
+    assert client.get(f"/api/documents/{doc_id}/download").status_code == 200
+    # filtre « en échec »
+    assert client.get("/api/documents", params={"status": "failed"}).json()["total"] == 1
+
+
 def test_auto_retry_recupere_un_echec(cfg, conn, client):
     doc_id = _make_failed(cfg, conn, attempts=0)
     doc = db.get_document(conn, doc_id, include_deleted=True)

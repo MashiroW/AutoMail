@@ -117,9 +117,9 @@ def _unique(path: Path) -> Path:
 
 
 def _ocr_and_extract(cfg: Config, src: Path, tmp_out: Path, tmp_txt: Path,
-                     languages: str):
+                     languages: str, force_ocr: bool = False):
     """OCR + extraction. Renvoie (result, text, page_count, doc_date, lang_guess)."""
-    result = run_ocr(src, tmp_out, tmp_txt, languages, cfg)
+    result = run_ocr(src, tmp_out, tmp_txt, languages, cfg, force_ocr=force_ocr)
     text = ""
     if tmp_txt.is_file():
         text = tmp_txt.read_text(encoding="utf-8", errors="replace")
@@ -233,6 +233,7 @@ def ocr_pending_doc(conn: sqlite3.Connection, cfg: Config, doc_id: int) -> bool:
                            notes="fichier d'origine absent du disque")
         return False
 
+    db.update_document(conn, doc_id, ocr_status="processing")  # visible « en cours »
     tmp_out = cfg.tmp_dir / f"{uuid.uuid4().hex}.pdf"
     tmp_txt = tmp_out.with_suffix(".txt")
     try:
@@ -328,8 +329,9 @@ def reprocess_failed_doc(conn: sqlite3.Connection, cfg: Config, doc: dict) -> bo
     tmp_out = cfg.tmp_dir / f"{uuid.uuid4().hex}.pdf"
     tmp_txt = tmp_out.with_suffix(".txt")
     try:
+        # 2ᵉ tentative et + : on rasterise tout (--force-ocr), plus robuste
         result, text, page_count, doc_date, lang_guess = _ocr_and_extract(
-            cfg, src, tmp_out, tmp_txt, cfg.ocr_languages
+            cfg, src, tmp_out, tmp_txt, cfg.ocr_languages, force_ocr=(attempts >= 2)
         )
         _place_ocr_outputs(
             conn, cfg, doc_id, doc["original_path"], doc["original_filename"],

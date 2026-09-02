@@ -39,6 +39,11 @@ ocr_output_type = "pdf"
 # Conserver le texte des PDF déjà numériques au lieu de les ré-OCRiser.
 ocr_skip_text = true
 
+# --force-ocr : rasterise chaque page et ré-OCRise tout. Plus lent, sortie plus
+# lourde, mais contourne les PDF à structure exotique qui échouent sinon.
+# (De toute façon appliqué automatiquement au 2ᵉ essai d'un courrier en échec.)
+ocr_force = false
+
 # Délai maximal d'un OCR, en secondes (protège contre un fichier qui bloque).
 ocr_timeout_seconds = 1800
 

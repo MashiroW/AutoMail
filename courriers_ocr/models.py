@@ -58,6 +58,7 @@ class StatsOut(BaseModel):
     trashed: int
     reprocessing: int = 0
     pending: int = 0
+    processing: int = 0
     last_added: str | None = None
     cpu_temp_c: float | None = None
     disk_free_bytes: int

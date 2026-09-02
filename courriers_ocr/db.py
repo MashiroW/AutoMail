@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS documents (
     correspondent        TEXT,
     title                TEXT,
     notes                TEXT,
-    ocr_status           TEXT NOT NULL,      -- 'pending' | 'ok' | 'skipped-has-text' | 'failed'
+    ocr_status           TEXT NOT NULL,      -- 'pending' | 'processing' | 'ok' | 'skipped-has-text' | 'failed'
     ocr_language         TEXT,
     lang_guess           TEXT,
     ocr_attempts         INTEGER NOT NULL DEFAULT 0,
@@ -225,6 +225,8 @@ def search_documents(
         where.append("d.ocr_status = 'failed'")
     elif status == "pending":
         where.append("d.ocr_status = 'pending'")
+    elif status == "processing":
+        where.append("d.ocr_status = 'processing'")
     if progress in ("todo", "ongoing", "done"):
         where.append("d.progress = ?")
         params.append(progress)
@@ -371,6 +373,8 @@ def stats(conn: sqlite3.Connection) -> dict:
                      THEN 1 ELSE 0 END)                                 AS failed,
             SUM(CASE WHEN deleted_at IS NULL AND ocr_status = 'pending'
                      THEN 1 ELSE 0 END)                                 AS pending,
+            SUM(CASE WHEN deleted_at IS NULL AND ocr_status = 'processing'
+                     THEN 1 ELSE 0 END)                                 AS processing,
             SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END)     AS trashed,
             MAX(added_at)                                               AS last_added
         FROM documents
@@ -381,10 +385,20 @@ def stats(conn: sqlite3.Connection) -> dict:
         "total": row["total"] or 0,
         "failed": row["failed"] or 0,
         "pending": row["pending"] or 0,
+        "processing": row["processing"] or 0,
         "trashed": row["trashed"] or 0,
         "last_added": row["last_added"],
         "reprocessing": reocr,
     }
+
+
+def reset_stuck_processing(conn: sqlite3.Connection) -> int:
+    """Après un crash : remet en 'pending' les OCR laissés 'processing'."""
+    cur = conn.execute(
+        "UPDATE documents SET ocr_status = 'pending' "
+        "WHERE ocr_status = 'processing' AND deleted_at IS NULL"
+    )
+    return cur.rowcount or 0
 
 
 # --------------------------------------------------------------------------- #

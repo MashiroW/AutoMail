@@ -227,7 +227,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         date_from: str | None = Query(None, alias="date_from"),
         date_to: str | None = Query(None, alias="date_to"),
         correspondent: str | None = None,
-        status: str | None = Query(None, pattern="^(ok|failed|pending|all|trash)?$"),
+        status: str | None = Query(None, pattern="^(ok|failed|pending|processing|all|trash)?$"),
         progress: str | None = Query(None, pattern="^(todo|ongoing|done)?$"),
         sort: str = Query("date", pattern="^(date|added|pertinence)$"),
         page: int = 1,

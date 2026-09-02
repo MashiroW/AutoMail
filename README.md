@@ -176,10 +176,13 @@ courrier apparaît, cherchable.
 
 - **Recherche mots-clés** : sur tout le texte OCR, insensible aux accents et à la
   casse, par préfixe (`convoc` trouve « convocation »).
-- **Filtres** : date, **OCR** (menu gris : tous / traités / **non traités** /
-  échecs), **Suivi** (pastilles colorées : tous / à faire / en cours / fait),
-  tri. Les deux sont volontairement distincts — l'un concerne l'OCR, l'autre
-  l'action à mener sur le courrier.
+- **Filtres** : date, **OCR** (menu gris : tous / traités / *en attente* /
+  *en cours* / échecs), **Suivi** (pastilles colorées : tous / à faire / en
+  cours / fait), tri. Les deux sont distincts : l'un = l'état de l'OCR, l'autre
+  = l'action à mener sur le courrier.
+- Un **échec** d'OCR affiche sa **raison** sur la carte et dans la fiche ; le
+  courrier reste ouvrable / téléchargeable. Le 2ᵉ essai automatique passe en
+  `--force-ocr` (rasterisation, plus robuste).
 - **Avancement** : chaque courrier a une pastille de couleur — *à faire*,
   *en cours*, *fait* (défaut). Clic sur la pastille pour la faire tourner ;
   modifiable aussi dans la fiche *Modifier* et en groupe.
@@ -224,6 +227,8 @@ courrier apparaît, cherchable.
 - `ocr_output_type` : `"pdf"` (cherchable, léger, robuste) ou `"pdfa"`
   (archivistique ; conversion ghostscript plus lourde, à éviter sur un vieux
   système).
+- `ocr_force` : `true` pour rasteriser tous les courriers dès le 1er passage
+  (si tes scans échouent systématiquement). Appliqué de toute façon au 2ᵉ essai.
 - `port`, `thumbnail_width`, `poll_interval_seconds`, `api_token`… — voir
   `config.example.toml` (commenté).
 

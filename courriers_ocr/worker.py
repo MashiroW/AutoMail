@@ -152,6 +152,9 @@ def run(cfg: Config, once: bool = False) -> None:
     cfg.ensure_dirs()
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
+    stuck = db.reset_stuck_processing(conn)
+    if stuck:
+        log.info("%s OCR interrompus remis en file d'attente", stuck)
 
     log.info("worker démarré — inbox=%s langues=%s", cfg.inbox, cfg.ocr_languages)
     pending: dict[Path, tuple[int, float, int]] = {}
