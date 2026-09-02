@@ -197,6 +197,34 @@ def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):
     assert listing["items"][0]["ocr_status"] == "ok"
 
 
+def test_bulk_corbeille_et_restauration(cfg, drop_letter, ingest, client):
+    for i, n in enumerate(("a", "b", "c")):
+        drop_letter(n, LETTER, pdf_bytes=f"%PDF-1.4 {n}\n%%EOF".encode())
+    ingest()
+    ids = [d["id"] for d in client.get("/api/documents").json()["items"]]
+    assert len(ids) == 3
+
+    # sélection multiple -> corbeille
+    r = client.post("/api/documents/bulk", json={"ids": ids[:2], "action": "trash"})
+    assert r.status_code == 200 and r.json()["done"] == 2
+    assert client.get("/api/documents").json()["total"] == 1
+    assert client.get("/api/documents", params={"status": "trash"}).json()["total"] == 2
+
+    # restauration groupée
+    r = client.post("/api/documents/bulk", json={"ids": ids[:2], "action": "restore"})
+    assert r.json()["done"] == 2
+    assert client.get("/api/documents").json()["total"] == 3
+
+    # purge groupée depuis la corbeille
+    client.post("/api/documents/bulk", json={"ids": ids, "action": "trash"})
+    r = client.post("/api/documents/bulk", json={"ids": ids, "action": "purge"})
+    assert r.json()["done"] == 3
+    assert client.get("/api/documents", params={"status": "trash"}).json()["total"] == 0
+
+    # action inconnue
+    assert client.post("/api/documents/bulk", json={"ids": [1], "action": "x"}).status_code == 422
+
+
 def test_version(client):
     r = client.get("/api/version")
     assert r.status_code == 200

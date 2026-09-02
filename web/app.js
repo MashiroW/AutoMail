@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (s) => document.querySelector(s);
-const state = { page: 1, pageSize: 20, editing: null };
+const state = { page: 1, pageSize: 20, editing: null, selected: new Set() };
 
 // --- thème clair / sombre --------------------------------------------------
 function applyTheme(mode) {
@@ -89,14 +89,21 @@ async function search(silent = false) {
 function render(items) {
   const results = $("#results");
   const isTrash = $("#status").value === "trash";
+  // ne garder en sélection que les courriers encore visibles
+  const visible = new Set(items.map((d) => d.id));
+  for (const id of [...state.selected]) if (!visible.has(id)) state.selected.delete(id);
+
   if (!items.length) {
     results.innerHTML = `<p class="empty">${isTrash ? "La corbeille est vide." : "Aucun courrier trouvé."}</p>`;
+    updateSelbar();
     return;
   }
   results.innerHTML = "";
   for (const doc of items) {
     const card = document.createElement("article");
     card.className = "card";
+    const picked = state.selected.has(doc.id);
+    if (picked) card.classList.add("selected");
     const thumb = (!isTrash && doc.has_thumbnail)
       ? `<img class="thumb" src="/api/documents/${doc.id}/thumbnail" alt="" loading="lazy">`
       : `<div class="thumb"></div>`;
@@ -122,6 +129,7 @@ function render(items) {
     }
 
     card.innerHTML = `
+      <label class="pick"><input type="checkbox" data-pick="${doc.id}"${picked ? " checked" : ""}></label>
       ${thumb}
       <div>
         <h3>${escapeHtml(doc.title || doc.original_filename)}</h3>
@@ -137,6 +145,44 @@ function render(items) {
       </div>`;
     results.appendChild(card);
   }
+  updateSelbar();
+}
+
+// --- sélection multiple ------------------------------------------------- //
+function updateSelbar() {
+  const n = state.selected.size;
+  $("#selbar").hidden = n === 0;
+  if (!n) return;
+  $("#sel-count").textContent = `${n} sélectionné${n > 1 ? "s" : ""}`;
+  $("#sel-actions").innerHTML = $("#status").value === "trash"
+    ? `<button type="button" data-bulk="restore">Restaurer</button>
+       <button type="button" data-bulk="purge" class="danger">Supprimer définitivement</button>`
+    : `<button type="button" data-bulk="trash" class="danger">Déplacer vers la corbeille</button>`;
+  const boxes = [...document.querySelectorAll("[data-pick]")];
+  $("#sel-all").checked = boxes.length > 0 && boxes.every((b) => state.selected.has(Number(b.dataset.pick)));
+}
+
+function clearSelection() {
+  state.selected.clear();
+  document.querySelectorAll(".card.selected").forEach((c) => c.classList.remove("selected"));
+  document.querySelectorAll("[data-pick]:checked").forEach((c) => (c.checked = false));
+  updateSelbar();
+}
+
+async function bulkAction(action) {
+  const ids = [...state.selected];
+  if (!ids.length) return;
+  const verb = { trash: "déplacer vers la corbeille", restore: "restaurer",
+                 purge: "supprimer DÉFINITIVEMENT" }[action];
+  if (action !== "restore" && !confirm(`${ids.length} courrier(s) — ${verb} ?`)) return;
+  try {
+    const r = await api("/documents/bulk", {
+      method: "POST", body: JSON.stringify({ ids, action }),
+    });
+    toast(`${r.done} traité(s)` + (r.errors.length ? ` · ${r.errors.length} erreur(s)` : ""));
+    clearSelection();
+    search(); loadStats();
+  } catch (e) { toast("Erreur : " + e.message); }
 }
 
 function renderPager(data) {
@@ -373,24 +419,49 @@ $("#search").addEventListener("submit", (e) => { e.preventDefault(); state.page 
 $("#search").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); state.page = 1; search(); }
 });
-$("#status").addEventListener("change", () => { syncTrashButton(); state.page = 1; search(); });
+$("#status").addEventListener("change", () => { clearSelection(); syncTrashButton(); state.page = 1; search(); });
 $("#empty-trash").addEventListener("click", emptyTrash);
 $("#reset").addEventListener("click", () => {
   for (const id of ["q", "date_from", "date_to", "correspondent"]) $("#" + id).value = "";
   $("#status").value = "ok";
   $("#sort").value = "date";
+  clearSelection();
   syncTrashButton();
   state.page = 1;
   search();
 });
-$("#prev").addEventListener("click", () => { if (state.page > 1) { state.page--; search(); } });
-$("#next").addEventListener("click", () => { state.page++; search(); });
+$("#prev").addEventListener("click", () => { if (state.page > 1) { clearSelection(); state.page--; search(); } });
+$("#next").addEventListener("click", () => { clearSelection(); state.page++; search(); });
 
 $("#results").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const id = Number(btn.dataset.id);
   ({ preview: openPreview, edit: openEditor, retry, restore, purge })[btn.dataset.act]?.(id);
+});
+
+$("#results").addEventListener("change", (e) => {
+  const cb = e.target.closest("[data-pick]");
+  if (!cb) return;
+  const id = Number(cb.dataset.pick);
+  const card = cb.closest(".card");
+  if (cb.checked) { state.selected.add(id); card.classList.add("selected"); }
+  else { state.selected.delete(id); card.classList.remove("selected"); }
+  updateSelbar();
+});
+$("#sel-clear").addEventListener("click", clearSelection);
+$("#sel-all").addEventListener("change", (e) => {
+  for (const cb of document.querySelectorAll("[data-pick]")) {
+    cb.checked = e.target.checked;
+    const id = Number(cb.dataset.pick);
+    if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
+    cb.closest(".card").classList.toggle("selected", e.target.checked);
+  }
+  updateSelbar();
+});
+$("#selbar").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-bulk]");
+  if (b) bulkAction(b.dataset.bulk);
 });
 
 $("#editform").addEventListener("submit", (e) => { e.preventDefault(); saveEditor(); });

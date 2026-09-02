@@ -187,6 +187,9 @@ courrier apparaît, cherchable.
 - Chaque résultat : aperçu du PDF cherchable, **téléchargement de l'original**,
   fiche *Modifier* (toutes les infos + titre / correspondant / date / notes),
   *Réessayer* pour un échec, suppression (corbeille).
+- **Sélection multiple** : une case à cocher sur chaque carte (ou « toute la
+  page ») fait apparaître une barre d'actions groupées — *Déplacer vers la
+  corbeille*, ou dans la corbeille *Restaurer* / *Supprimer définitivement*.
 - Onglet **Corbeille** (menu déroulant de statut) : *Restaurer* un courrier,
   *Supprimer définitivement*, ou *Vider la corbeille*. Rien n'est effacé pour de
   bon avant cette action.

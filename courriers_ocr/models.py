@@ -44,6 +44,11 @@ class ReocrRequest(BaseModel):
     language: str = Field(examples=["deu", "ara", "fra+deu"])
 
 
+class BulkRequest(BaseModel):
+    ids: list[int]
+    action: str = Field(examples=["trash", "restore", "purge"])
+
+
 class StatsOut(BaseModel):
     total: int
     failed: int

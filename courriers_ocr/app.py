@@ -25,6 +25,7 @@ from .ingest import (
     restore_from_trash,
 )
 from .models import (
+    BulkRequest,
     DocumentOut,
     DocumentPatch,
     ReocrRequest,
@@ -344,6 +345,38 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         purge_trash_dir(cfg, doc_id)
         db.purge(conn, doc_id)
         return {"status": "supprimé définitivement"}
+
+    @app.post("/api/documents/bulk", dependencies=[Depends(auth)])
+    def bulk(body: BulkRequest, conn=Depends(get_conn)):
+        if body.action not in ("trash", "restore", "purge"):
+            raise HTTPException(422, "action invalide (trash | restore | purge)")
+        done, errors = 0, []
+        for doc_id in body.ids[:500]:
+            try:
+                row = db.get_document(conn, doc_id, include_deleted=True)
+                if not row:
+                    errors.append(doc_id)
+                    continue
+                if body.action == "trash":
+                    if row["deleted_at"]:
+                        continue
+                    move_to_trash(cfg, row)
+                    db.soft_delete(conn, doc_id)
+                elif body.action == "restore":
+                    if not row["deleted_at"]:
+                        continue
+                    text = restore_from_trash(cfg, row)
+                    db.restore(conn, doc_id)
+                    db.set_fts(conn, doc_id, text, row["title"], row["correspondent"])
+                else:  # purge
+                    if not row["deleted_at"]:
+                        continue
+                    purge_trash_dir(cfg, doc_id)
+                    db.purge(conn, doc_id)
+                done += 1
+            except Exception:  # noqa: BLE001
+                errors.append(doc_id)
+        return {"done": done, "errors": errors}
 
     @app.post("/api/trash/empty", dependencies=[Depends(auth)])
     def empty_trash(conn=Depends(get_conn)):
