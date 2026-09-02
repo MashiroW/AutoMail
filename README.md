@@ -45,22 +45,17 @@ Sauvegarder = archiver ce dossier. Désinstaller =
 - Raspberry Pi 4 / 5, 2 Go de RAM minimum. Un SSD USB est conseillé pour l'archive.
 - Ordre de grandeur OCR sur Pi 4 : ~10 à 40 s par page.
 
-## Récupérer le code
-
-Le dépôt est privé. Au choix :
-
-- `git clone git@github.com:MashiroW/AutoMail.git automail` après avoir ajouté une
-  **clé de déploiement** (`cat ~/.ssh/id_ed25519.pub` → GitHub → repo → Settings →
-  Deploy keys, accès lecture seule) ;
-- ou `git clone https://<TOKEN>@github.com/MashiroW/AutoMail.git automail` ;
-- ou télécharger le **ZIP** depuis l'interface web de GitHub et l'extraire.
-
 ## Installation
 
-### Raspberry Pi OS Buster / Bullseye (OS ancien, Python < 3.10)
+### 1. Récupérer le code
 
 ```bash
-cd automail
+cd ~ && git clone https://github.com/MashiroW/AutoMail.git automail && cd automail
+```
+
+### 2a. Raspberry Pi OS Buster / Bullseye (OS ancien, Python < 3.10)
+
+```bash
 sudo bash deploy/bootstrap-pi-buster.sh
 ```
 
@@ -70,15 +65,15 @@ Ce script tout-en-un :
 2. lance `deploy/install.sh` — installe `ocrmypdf` + Tesseract (fra/deu/ara) +
    poppler + unpaper via l'apt de l'hôte, récupère un **Python 3.11 portable**
    (binaire, sans compilation ; compilé en dernier recours), crée `.venv/` +
-   `data/` + `config.toml` **dans ce dossier**, pose et démarre les 2 services ;
-3. lance `deploy/setup-samba.sh` — partage réseau `scans` pointé sur l'inbox.
+   `data/` + `config.toml` **dans ce dossier**, génère et démarre les 2 services ;
+3. lance `deploy/setup-samba.sh` — partage réseau `scans` pointé sur
+   `data/inbox` (le dossier que le worker surveille).
 
-### Raspberry Pi OS Bookworm ou plus récent (Python ≥ 3.10 fourni)
+### 2b. Raspberry Pi OS Bookworm ou plus récent (Python ≥ 3.10 fourni)
 
 ```bash
-cd automail
 sudo bash deploy/install.sh
-sudo bash deploy/setup-samba.sh      # partage réseau pour le scanner
+sudo bash deploy/setup-samba.sh
 ```
 
 `install.sh` utilise directement le Python du système ; pas de bascule de dépôts.
@@ -95,12 +90,17 @@ Logs :        journalctl -u automail-worker -f      (et automail-web)
 ## Alimenter l'inbox depuis le scanner
 
 `deploy/setup-samba.sh` crée un partage Samba **invité** (sans mot de passe)
-nommé `scans`, pointé sur `data/inbox`, avec `force user` = ton utilisateur.
+nommé `scans` qui pointe **exactement sur `<clone>/data/inbox`**, c'est-à-dire le
+dossier que le worker surveille — le fichier déposé par le scanner et le fichier
+attendu par le programme sont le même. `force user` = ton utilisateur, donc pas
+de souci de droits. Le script est **idempotent** : le relancer réécrit le bloc
+avec le bon chemin (utile après un déménagement du projet ou si un vieux partage
+traînait).
+
 Il affiche le chemin réseau (`\\<ip-du-pi>\scans`) à mettre comme destination
 « scan vers dossier » dans le logiciel du scanner. Sortie **PDF** simple (pas
-« PDF cherchable » : c'est le Pi qui s'en charge), 300 dpi conseillé.
-
-Détails et cas « repointer un partage existant » : [`deploy/samba-inbox.md`](deploy/samba-inbox.md).
+« PDF cherchable » : c'est le Pi qui s'en charge), 300 dpi conseillé. Détails :
+[`deploy/samba-inbox.md`](deploy/samba-inbox.md).
 
 Un fichier n'est traité qu'une fois sa **taille stable** (scanner qui a fini
 d'écrire). Une fois traité il quitte l'inbox : l'original va dans

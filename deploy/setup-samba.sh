@@ -3,8 +3,11 @@
 # Expose l'inbox d'AutoMail en partage réseau (Samba, invité, sans mot de passe).
 # Le scanner (profil « scan vers dossier réseau ») écrit dedans, le worker traite.
 #
-# Usage :   sudo bash deploy/setup-samba.sh [nom-du-partage]
-#           (nom par défaut : "scans")
+# Le partage pointe TOUJOURS sur  <ce-dossier>/data/inbox  — exactement le dossier
+# surveillé par le worker. Le script est idempotent : re-le lancer réécrit le bloc
+# avec les bons paramètres (utile après un déménagement du projet).
+#
+# Usage :   sudo bash deploy/setup-samba.sh [nom-du-partage]   (défaut : "scans")
 #
 set -euo pipefail
 
@@ -12,6 +15,7 @@ CLONE="$(cd "$(dirname "$0")/.." && pwd)"
 SHARE="${1:-scans}"
 INBOX="$CLONE/data/inbox"
 RUN_USER="${SUDO_USER:-$(id -un)}"
+RUN_GROUP="$(id -gn "$RUN_USER")"
 SMB_CONF=/etc/samba/smb.conf
 
 [[ $EUID -eq 0 ]] || { echo "À lancer avec sudo." >&2; exit 1; }
@@ -19,14 +23,19 @@ SMB_CONF=/etc/samba/smb.conf
 command -v smbd >/dev/null || apt-get install -y --no-install-recommends samba
 
 mkdir -p "$INBOX"
-chown -R "$RUN_USER:$(id -gn "$RUN_USER")" "$CLONE/data"
+chown -R "$RUN_USER:$RUN_GROUP" "$CLONE/data"
 
-if grep -q "^\[$SHARE\]" "$SMB_CONF"; then
-  echo "Le partage [$SHARE] existe déjà dans $SMB_CONF."
-  echo "Vérifie à la main :  path = $INBOX  et  force user = $RUN_USER"
-else
-  cp "$SMB_CONF" "$SMB_CONF.bak.$(date +%s)"
-  cat >> "$SMB_CONF" <<EOF
+cp "$SMB_CONF" "$SMB_CONF.bak.$(date +%s)"
+
+# retire un éventuel bloc [SHARE] existant, puis ré-ajoute le bon
+awk -v hdr="[$SHARE]" '
+  { line=$0; t=$0; gsub(/^[ \t]+|[ \t]+$/,"",t) }
+  t == hdr        { skip=1; next }
+  skip && /^[ \t]*\[.*\]/ { skip=0 }
+  !skip           { print line }
+' "$SMB_CONF" > "$SMB_CONF.tmp"
+
+cat >> "$SMB_CONF.tmp" <<EOF
 
 [$SHARE]
    comment = Depot des courriers a numeriser (AutoMail)
@@ -35,12 +44,12 @@ else
    read only = no
    guest ok = yes
    force user = $RUN_USER
-   force group = $(id -gn "$RUN_USER")
+   force group = $RUN_GROUP
    create mask = 0664
    directory mask = 0775
 EOF
-  echo "Partage [$SHARE] ajouté à $SMB_CONF."
-fi
+
+mv "$SMB_CONF.tmp" "$SMB_CONF"
 
 testparm -s >/dev/null
 systemctl enable --now smbd
@@ -49,9 +58,10 @@ systemctl restart smbd
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat <<EOF
 
-Partage prêt :
+Partage réseau prêt :
    \\\\${IP:-<ip-du-pi>}\\$SHARE   ->   $INBOX
 
-Dans le logiciel du scanner, règle la destination « scan vers dossier » sur ce
-chemin réseau. Chaque PDF déposé sera OCRisé puis indexé automatiquement.
+C'est le dossier surveillé par le worker. Règle la destination « scan vers
+dossier » de ton scanner sur ce chemin réseau — chaque PDF déposé sera OCRisé
+puis indexé automatiquement.
 EOF
