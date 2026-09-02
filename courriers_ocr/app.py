@@ -70,6 +70,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def _no_stale_assets(request: Request, call_next):
+        """L'interface (html/js/css) doit être revérifiée à chaque chargement,
+        sinon le navigateur sert une version périmée après une mise à jour."""
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith((".html", ".js", ".css")):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
     def get_conn():
         conn = db.connect(cfg.db_path)
         try:
