@@ -157,6 +157,11 @@ async function loadStats() {
     if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
     if (s.last_added) parts.push(`dernier ajout ${fmtDate(s.last_added)}`);
     parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
+    if (s.cpu_temp_c != null) {
+      const t = s.cpu_temp_c;
+      const cls = t >= 80 ? "warn" : (t >= 70 ? "busy" : "");
+      parts.push(`<span class="${cls}">${t.toFixed(1)} °C</span>`);
+    }
     $("#stats").innerHTML = parts.join(" · ");
   } catch {}
 }

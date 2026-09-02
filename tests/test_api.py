@@ -37,6 +37,7 @@ def test_stats(cfg, drop_letter, ingest, client):
     assert s["failed"] == 0
     assert s["pending"] == 0 and s["reprocessing"] == 0
     assert s["disk_total_bytes"] > 0
+    assert "cpu_temp_c" in s  # None hors Raspberry Pi
 
 
 def test_patch_correspondant_et_date_manuelle(cfg, drop_letter, ingest, client):

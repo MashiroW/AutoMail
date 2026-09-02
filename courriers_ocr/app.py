@@ -32,6 +32,15 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def _cpu_temp_c() -> float | None:
+    """Température CPU en °C (Raspberry Pi / Linux). None si indisponible."""
+    try:
+        raw = float(Path("/sys/class/thermal/thermal_zone0/temp").read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return round(raw / 1000 if raw > 200 else raw, 1)
+
+
 def _row_to_out(row: dict) -> DocumentOut:
     return DocumentOut(
         id=row["id"],
@@ -115,7 +124,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 and not p.name.startswith(".")
             )
         return StatsOut(
-            **s, pending=pending,
+            **s, pending=pending, cpu_temp_c=_cpu_temp_c(),
             disk_free_bytes=usage.free, disk_total_bytes=usage.total,
         )
 
