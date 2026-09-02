@@ -211,17 +211,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/api/stats", response_model=StatsOut, dependencies=[Depends(auth)])
     def get_stats(conn=Depends(get_conn)):
+        # "pending" = strictement les courriers en statut 'non traité' (= filtre)
         s = db.stats(conn)
         usage = shutil.disk_usage(cfg.data_dir)
-        # "en attente" = déjà enregistrés (status pending) + fichiers pas encore vus
-        inbox_unseen = 0
-        if cfg.inbox.is_dir():
-            inbox_unseen = sum(
-                1 for p in cfg.inbox.iterdir()
-                if p.is_file() and p.suffix.lower() == ".pdf"
-                and not p.name.startswith(".")
-            )
-        s["pending"] = s.get("pending", 0) + inbox_unseen
         return StatsOut(
             **s, cpu_temp_c=_cpu_temp_c(),
             disk_free_bytes=usage.free, disk_total_bytes=usage.total,

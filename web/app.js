@@ -296,7 +296,8 @@ async function loadStats() {
   const parts = [`<b>${s.total}</b> courriers`];
   const inFlight = (s.pending || 0) + (s.reprocessing || 0);
   const prevInFlight = state.lastInFlight;
-  if (inFlight) parts.push(`<span class="busy">${inFlight} en traitement</span>`);
+  if (s.pending) parts.push(`<span class="busy">${s.pending} non traité${s.pending > 1 ? "s" : ""}</span>`);
+  if (s.reprocessing) parts.push(`<span class="busy">${s.reprocessing} en ré-OCR</span>`);
   if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
   parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
   if (s.cpu_temp_c != null) {
