@@ -26,6 +26,20 @@ const PROG = {
   done: ["Fait", "prog-done"],
 };
 const PROG_NEXT = { todo: "ongoing", ongoing: "done", done: "todo" };
+const PROG_COLOR = { todo: "var(--prog-todo)", ongoing: "var(--prog-ongoing)", done: "var(--prog-done)" };
+
+// --- icônes (stroke, currentColor) ------------------------------------- //
+const IC = {
+  eye: `<svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  download: `<svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg>`,
+  edit: `<svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  retry: `<svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>`,
+  restore: `<svg class="ic" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 8"/></svg>`,
+  trash: `<svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>`,
+  sun: `<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
+  moon: `<svg class="ic" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>`,
+  inbox: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5Z"/></svg>`,
+};
 
 // --- thème ------------------------------------------------------------- //
 function applyTheme(mode) {
@@ -34,7 +48,7 @@ function applyTheme(mode) {
   else root.removeAttribute("data-theme");
   const dark = mode === "dark" ||
     (mode !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
-  $("#theme").textContent = dark ? "☀️" : "🌙";
+  $("#theme").innerHTML = dark ? IC.sun : IC.moon;
 }
 let themeMode = LS.get("theme", "auto");
 applyTheme(themeMode);
@@ -97,9 +111,16 @@ function currentQuery() {
   return p.toString();
 }
 
+function skeletonHTML(n) {
+  const one = `<article class="card skeleton"><div class="thumb"></div>
+    <div class="body"><div class="sk-line w60"></div><div class="sk-line w40"></div>
+    <div class="sk-line w80"></div><div class="sk-line w40"></div></div></article>`;
+  return one.repeat(n);
+}
+
 async function search(silent = false) {
   const results = $("#results");
-  if (!silent) results.innerHTML = `<p class="empty">Recherche…</p>`;
+  if (!silent) results.innerHTML = skeletonHTML(Math.min(8, state.pageSize));
   try {
     const data = await api("/documents?" + currentQuery());
     render(data.items);
@@ -116,7 +137,7 @@ function render(items) {
   for (const id of [...state.selected]) if (!visible.has(id)) state.selected.delete(id);
 
   if (!items.length) {
-    results.innerHTML = `<p class="empty">${state.trash ? "La corbeille est vide." : "Aucun courrier trouvé."}</p>`;
+    results.innerHTML = `<div class="empty">${IC.inbox}<div>${state.trash ? "La corbeille est vide." : "Aucun courrier trouvé."}</div></div>`;
     updateSelbar();
     return;
   }
@@ -138,22 +159,17 @@ function render(items) {
     if (doc.lang_guess && doc.lang_guess !== "fr")
       badges.push(`<span class="badge lang">langue&nbsp;? ${LANGS[doc.lang_guess] || doc.lang_guess}</span>`);
 
+    const dl = `<a class="btn" href="/api/documents/${doc.id}/download">${IC.download}Télécharger</a>`;
+    const edit = `<button data-act="edit" data-id="${doc.id}">${IC.edit}Modifier</button>`;
+    const view = `<button data-act="preview" data-id="${doc.id}">${IC.eye}Aperçu</button>`;
     let actions;
     if (state.trash) {
-      actions = `<button data-act="restore" data-id="${doc.id}">Restaurer</button>
-        <button data-act="purge" data-id="${doc.id}" class="danger">Supprimer</button>`;
-    } else if (doc.ocr_status === "pending") {
-      actions = `<button data-act="preview" data-id="${doc.id}">Aperçu</button>
-        <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
-        <button data-act="edit" data-id="${doc.id}">Modifier</button>`;
+      actions = `<button data-act="restore" data-id="${doc.id}">${IC.restore}Restaurer</button>
+        <button data-act="purge" data-id="${doc.id}" class="danger">${IC.trash}Supprimer</button>`;
     } else if (doc.ocr_status === "failed") {
-      actions = `<button data-act="retry" data-id="${doc.id}">Réessayer</button>
-        <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
-        <button data-act="edit" data-id="${doc.id}">Modifier</button>`;
+      actions = `<button data-act="retry" data-id="${doc.id}">${IC.retry}Réessayer</button>${dl}${edit}`;
     } else {
-      actions = `<button data-act="preview" data-id="${doc.id}">Aperçu</button>
-        <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
-        <button data-act="edit" data-id="${doc.id}">Modifier</button>`;
+      actions = `${view}${dl}${edit}`;
     }
 
     const [plabel, pcls] = PROG[doc.progress] || PROG.done;
@@ -516,6 +532,64 @@ $("#results").addEventListener("change", (e) => {
   else { state.selected.delete(id); card.classList.remove("selected"); }
   updateSelbar();
 });
+
+// --- navigation Courriers / Tableau de bord ------------------------------- //
+function setNav(v) {
+  document.querySelectorAll(".mainnav button").forEach((b) => b.classList.toggle("on", b.dataset.nav === v));
+  $("#view-mail").hidden = v !== "mail";
+  $("#view-dash").hidden = v !== "dash";
+  if (v === "dash") loadDashboard();
+}
+document.querySelector(".mainnav").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-nav]"); if (b) setNav(b.dataset.nav);
+});
+
+// --- tableau de bord ------------------------------------------------------- //
+function bars(data) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  return `<div class="bars">${data.map((d) => {
+    const [y, m] = d.month.split("-");
+    return `<div class="bar"><b>${d.count}</b><i style="height:${Math.round((d.count / max) * 130) + 4}px"></i>
+      <span>${m}/${y.slice(2)}</span></div>`;
+  }).join("")}</div>`;
+}
+function legend(obj, colors, labels) {
+  const total = Math.max(1, Object.values(obj).reduce((a, b) => a + b, 0));
+  return `<div class="legend">${Object.keys(labels).map((k) => `
+    <div class="row">
+      <span class="dot" style="background:${colors[k]}"></span>
+      <span>${labels[k]}</span>
+      <span class="track"><span class="fill" style="width:${Math.round((obj[k] || 0) / total * 100)}%;background:${colors[k]}"></span></span>
+      <span class="num">${obj[k] || 0}</span>
+    </div>`).join("")}</div>`;
+}
+async function loadDashboard() {
+  const el = $("#dash");
+  el.innerHTML = skeletonHTML(4);
+  try {
+    const o = await api("/overview");
+    const usedGo = ((o.disk_total_bytes - o.disk_free_bytes) / 1e9).toFixed(1);
+    const totGo = (o.disk_total_bytes / 1e9).toFixed(0);
+    el.innerHTML = `
+      <div class="kpi"><div class="k-label">Courriers</div><div class="k-value">${o.total}</div>
+        <div class="k-sub">${o.this_month} ce mois-ci</div></div>
+      <div class="kpi"><div class="k-label">En échec OCR</div><div class="k-value">${o.by_ocr.failed}</div>
+        <div class="k-sub">${o.by_ocr.pending} en attente</div></div>
+      <div class="kpi"><div class="k-label">Corbeille</div><div class="k-value">${o.trashed}</div>
+        <div class="k-sub">non comptés dans le total</div></div>
+      <div class="kpi"><div class="k-label">Stockage</div><div class="k-value">${usedGo} Go</div>
+        <div class="k-sub">sur ${totGo} Go${o.cpu_temp_c != null ? " · " + o.cpu_temp_c.toFixed(0) + " °C" : ""}</div></div>
+      <div class="panel"><h3>Courriers par mois</h3>${o.by_month.length ? bars(o.by_month) : '<p class="muted">Pas encore de données.</p>'}</div>
+      <div class="panel half"><h3>Avancement</h3>${legend(o.by_progress,
+        { todo: "var(--prog-todo)", ongoing: "var(--prog-ongoing)", done: "var(--prog-done)" },
+        { todo: "À faire", ongoing: "En cours", done: "Fait" })}</div>
+      <div class="panel half"><h3>État de l'OCR</h3>${legend(o.by_ocr,
+        { ok: "var(--ok)", pending: "var(--accent)", failed: "var(--danger)" },
+        { ok: "Traités", pending: "Non traités", failed: "Échecs" })}</div>`;
+  } catch (e) {
+    el.innerHTML = `<p class="empty">Erreur : ${esc(e.message)}</p>`;
+  }
+}
 
 $("#update").addEventListener("click", openUpdater);
 $("#upd-run").addEventListener("click", runUpdate);

@@ -62,3 +62,15 @@ class StatsOut(BaseModel):
     cpu_temp_c: float | None = None
     disk_free_bytes: int
     disk_total_bytes: int
+
+
+class OverviewOut(BaseModel):
+    total: int
+    this_month: int
+    trashed: int
+    disk_free_bytes: int
+    disk_total_bytes: int
+    cpu_temp_c: float | None = None
+    by_month: list[dict]          # [{"month": "2026-01", "count": 12}, ...]
+    by_progress: dict             # {"todo": n, "ongoing": n, "done": n}
+    by_ocr: dict                  # {"ok": n, "pending": n, "failed": n}

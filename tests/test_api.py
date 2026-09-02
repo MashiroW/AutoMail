@@ -293,5 +293,20 @@ def test_version(client):
     assert set(r.json()) == {"commit", "subject", "date", "dirty"}
 
 
+def test_overview(cfg, drop_letter, ingest, client):
+    for i, n in enumerate(("o1", "o2", "o3")):
+        drop_letter(n, LETTER, pdf_bytes=f"%PDF-1.4 {n}\n%%EOF".encode())
+    ingest()
+    ids = [d["id"] for d in client.get("/api/documents").json()["items"]]
+    client.patch(f"/api/documents/{ids[0]}", json={"progress": "todo"})
+
+    o = client.get("/api/overview").json()
+    assert o["total"] == 3
+    assert o["by_ocr"]["ok"] == 3 and o["by_ocr"]["failed"] == 0
+    assert o["by_progress"]["todo"] == 1 and o["by_progress"]["done"] == 2
+    assert sum(m["count"] for m in o["by_month"]) == 3
+    assert o["disk_total_bytes"] > 0
+
+
 def test_reponse_web_racine(client):
     assert client.get("/").status_code == 200

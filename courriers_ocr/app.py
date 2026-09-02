@@ -31,6 +31,7 @@ from .models import (
     BulkRequest,
     DocumentOut,
     DocumentPatch,
+    OverviewOut,
     ReocrRequest,
     SearchResponse,
     StatsOut,
@@ -146,6 +147,15 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/version")
     def version():
         return _version()
+
+    @app.get("/api/overview", response_model=OverviewOut, dependencies=[Depends(auth)])
+    def overview(conn=Depends(get_conn)):
+        o = db.overview(conn)
+        usage = shutil.disk_usage(cfg.data_dir)
+        return OverviewOut(
+            **o, cpu_temp_c=_cpu_temp_c(),
+            disk_free_bytes=usage.free, disk_total_bytes=usage.total,
+        )
 
     @app.post("/api/update", dependencies=[Depends(auth)])
     def update():

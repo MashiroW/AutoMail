@@ -281,6 +281,55 @@ def purge(conn: sqlite3.Connection, doc_id: int) -> None:
     conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
 
 
+def overview(conn: sqlite3.Connection) -> dict:
+    """Agrégats pour le tableau de bord."""
+    by_month = [
+        {"month": r["m"], "count": r["c"]}
+        for r in conn.execute(
+            """
+            SELECT strftime('%Y-%m', COALESCE(document_date, substr(added_at,1,10))) AS m,
+                   COUNT(*) AS c
+            FROM documents
+            WHERE deleted_at IS NULL
+              AND COALESCE(document_date, substr(added_at,1,10)) IS NOT NULL
+            GROUP BY m ORDER BY m DESC LIMIT 12
+            """
+        ).fetchall()
+    ][::-1]
+
+    def _counts(col: str, keys: tuple[str, ...]) -> dict:
+        rows = {
+            r[col]: r["c"] for r in conn.execute(
+                f"SELECT {col}, COUNT(*) AS c FROM documents "
+                f"WHERE deleted_at IS NULL GROUP BY {col}"
+            ).fetchall()
+        }
+        return {k: int(rows.get(k, 0)) for k in keys}
+
+    by_ocr_raw = _counts("ocr_status", ("ok", "skipped-has-text", "pending", "failed"))
+    by_ocr = {
+        "ok": by_ocr_raw["ok"] + by_ocr_raw["skipped-has-text"],
+        "pending": by_ocr_raw["pending"],
+        "failed": by_ocr_raw["failed"],
+    }
+    this_month = conn.execute(
+        "SELECT COUNT(*) AS c FROM documents WHERE deleted_at IS NULL "
+        "AND strftime('%Y-%m', added_at) = strftime('%Y-%m', 'now')"
+    ).fetchone()["c"]
+    trashed = conn.execute(
+        "SELECT COUNT(*) AS c FROM documents WHERE deleted_at IS NOT NULL"
+    ).fetchone()["c"]
+    total = conn.execute(
+        "SELECT COUNT(*) AS c FROM documents WHERE deleted_at IS NULL"
+    ).fetchone()["c"]
+    return {
+        "total": total, "this_month": this_month, "trashed": trashed,
+        "by_month": by_month,
+        "by_progress": _counts("progress", ("todo", "ongoing", "done")),
+        "by_ocr": by_ocr,
+    }
+
+
 def pending_doc_ids(conn: sqlite3.Connection, limit: int = 50) -> list[int]:
     rows = conn.execute(
         "SELECT id FROM documents WHERE ocr_status = 'pending' AND deleted_at IS NULL "

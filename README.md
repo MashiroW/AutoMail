@@ -201,6 +201,11 @@ courrier apparaît, cherchable.
   direct, puis **« Redémarrer les services »** (sans privilège, relance via
   systemd), et invitation à recharger (Ctrl + Maj + R).
 - Bouton 🌙 / ☀️ : thème clair / sombre (mémorisé).
+- **Tableau de bord** (onglet en-tête) : indicateurs clés, volume de courriers
+  par mois, répartition par avancement et par état OCR.
+- Interface soignée : icônes SVG, écrans de chargement (skeletons), micro-
+  animations (respecte `prefers-reduced-motion`), en-tête et barre d'outils
+  collants.
 - **La liste se rafraîchit toute seule** quand le contenu change (nouveau scan,
   OCR terminé…), sans perdre la position de lecture.
 
