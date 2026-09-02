@@ -75,14 +75,14 @@ function currentQuery() {
   return p.toString();
 }
 
-async function search() {
-  $("#results").innerHTML = `<p class="empty">Recherche…</p>`;
+async function search(silent = false) {
+  if (!silent) $("#results").innerHTML = `<p class="empty">Recherche…</p>`;
   try {
     const data = await api("/documents?" + currentQuery());
     render(data.items);
     renderPager(data);
   } catch (e) {
-    $("#results").innerHTML = `<p class="empty">Erreur : ${escapeHtml(e.message)}</p>`;
+    if (!silent) $("#results").innerHTML = `<p class="empty">Erreur : ${escapeHtml(e.message)}</p>`;
   }
 }
 
@@ -147,23 +147,38 @@ function renderPager(data) {
   $("#next").disabled = data.page >= pages;
 }
 
-// --- stats ------------------------------------------------------------- //
+// --- stats + auto-refresh de la liste --------------------------------- //
+let statsSig = null;
+let lastInFlight = 0;
+
 async function loadStats() {
-  try {
-    const s = await api("/stats");
-    const parts = [`<b>${s.total}</b> courriers`];
-    const inFlight = (s.pending || 0) + (s.reprocessing || 0);
-    if (inFlight) parts.push(`<span class="busy">${inFlight} en cours de traitement</span>`);
-    if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
-    if (s.last_added) parts.push(`dernier ajout ${fmtDate(s.last_added)}`);
-    parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
-    if (s.cpu_temp_c != null) {
-      const t = s.cpu_temp_c;
-      const cls = t >= 80 ? "warn" : (t >= 70 ? "busy" : "");
-      parts.push(`<span class="${cls}">${t.toFixed(1)} °C</span>`);
-    }
-    $("#stats").innerHTML = parts.join(" · ");
-  } catch {}
+  let s;
+  try { s = await api("/stats"); } catch { return; }
+
+  const parts = [`<b>${s.total}</b> courriers`];
+  const inFlight = (s.pending || 0) + (s.reprocessing || 0);
+  lastInFlight = inFlight;
+  if (inFlight) parts.push(`<span class="busy">${inFlight} en cours de traitement</span>`);
+  if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
+  if (s.last_added) parts.push(`dernier ajout ${fmtDate(s.last_added)}`);
+  parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
+  if (s.cpu_temp_c != null) {
+    const t = s.cpu_temp_c;
+    const cls = t >= 80 ? "warn" : (t >= 70 ? "busy" : "");
+    parts.push(`<span class="${cls}">${t.toFixed(1)} °C</span>`);
+  }
+  $("#stats").innerHTML = parts.join(" · ");
+
+  // rafraîchit la liste toute seule si le contenu a changé (nouveau courrier,
+  // OCR terminé, échec…), sans casser la position de lecture
+  const sig = [s.total, s.failed, s.trashed, s.last_added].join("|");
+  const dialogOpen = document.querySelector("dialog[open]");
+  if (statsSig !== null && sig !== statsSig && state.page === 1 && !dialogOpen) {
+    const y = window.scrollY;
+    await search(true);
+    window.scrollTo(0, y);
+  }
+  statsSig = sig;
 }
 
 // --- aperçu ---------------------------------------------------------------- //
@@ -390,4 +405,11 @@ $("#preview").addEventListener("close", () => ($("#preview-frame").src = "about:
 syncTrashButton();
 loadStats();
 search();
-setInterval(loadStats, 15000);
+
+// boucle de rafraîchissement : plus rapide quand un traitement est en cours
+async function pollLoop() {
+  await loadStats();
+  const delay = lastInFlight > 0 ? 5000 : 12000;
+  setTimeout(pollLoop, delay);
+}
+setTimeout(pollLoop, 5000);
