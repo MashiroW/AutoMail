@@ -15,6 +15,7 @@ const state = {
   selectMode: false,
   selected: new Set(),
   statsSig: null,
+  renderSig: null,
   lastInFlight: 0,
   avgSecPerPage: null,
 };
@@ -163,7 +164,10 @@ function skeletonHTML(n) {
 
 async function search(silent = false) {
   const results = $("#results");
-  if (!silent) results.innerHTML = skeletonHTML(Math.min(8, state.pageSize));
+  if (!silent) {
+    results.innerHTML = skeletonHTML(Math.min(8, state.pageSize));
+    state.renderSig = null;               // force le rendu après un skeleton
+  }
   try {
     const data = await api("/documents?" + currentQuery());
     render(data.items);
@@ -173,11 +177,26 @@ async function search(silent = false) {
   }
 }
 
+// signature de ce qui est affiché : si rien de visible n'a changé entre deux
+// rafraîchissements, on ne touche pas au DOM (évite le clignotement régulier)
+function renderSignature(items) {
+  return state.view + (state.selectMode ? "S" : "") + (state.trash ? "T" : "") + "|" +
+    items.map((d) =>
+      [d.id, d.ocr_status, d.ocr_attempts, d.progress, d.document_date || "",
+       d.title || "", d.has_thumbnail ? 1 : 0, d.snippet ? 1 : 0].join(":")
+    ).join("|");
+}
+
 function render(items) {
   const results = $("#results");
-  results.className = "view-" + state.view + (state.selectMode ? " selecting" : "");
   const visible = new Set(items.map((d) => d.id));
   for (const id of [...state.selected]) if (!visible.has(id)) state.selected.delete(id);
+
+  const sig = renderSignature(items);
+  if (sig === state.renderSig) { updateSelbar(); return; }
+  state.renderSig = sig;
+
+  results.className = "view-" + state.view + (state.selectMode ? " selecting" : "");
 
   if (!items.length) {
     results.innerHTML = `<div class="empty">${IC.inbox}<div>${state.trash ? "La corbeille est vide." : "Aucun courrier trouvé."}</div></div>`;
@@ -334,11 +353,16 @@ async function bulkAction(action, value) {
 // --- stats + auto-refresh -------------------------------------------------- //
 async function loadStats() {
   let s;
-  try { s = await api("/stats"); } catch { return; }
+  try { s = await api("/stats"); }
+  catch { return; }        // erreur passagère : le prochain tick réessaiera
+  try { renderStats(s); }
+  catch (e) { console.warn("loadStats", e); }
+}
+
+function renderStats(s) {
   state.avgSecPerPage = s.avg_sec_per_page || null;
   const parts = [`<b>${s.total}</b> courrier${s.total > 1 ? "s" : ""}`];
   const inFlight = (s.pending || 0) + (s.processing || 0) + (s.reprocessing || 0);
-  const prevInFlight = state.lastInFlight;
   // « traités » = total − en attente − en cours : ce nombre monte à chaque OCR fini,
   // alors que le total global ne bouge pas (un courrier compte dès son dépôt).
   if (s.pending || s.processing) {
@@ -357,19 +381,18 @@ async function loadStats() {
   }
   $("#stats").innerHTML = parts.join(" · ");
 
-  // rafraîchit la liste si l'état a changé OU si un traitement est/était en cours
-  // (un courrier qui passe non traité -> traité ne bouge aucun compteur global)
-  const sig = [s.total, s.failed, s.pending, s.processing, s.reprocessing, s.trashed, s.last_added].join("|");
-  const shouldRefresh =
-    (state.statsSig !== null && sig !== state.statsSig) ||
-    inFlight > 0 || prevInFlight > 0;
-  if (shouldRefresh && state.page === 1 && !document.querySelector("dialog[open]")) {
-    const y = window.scrollY;
-    await search(true);
-    window.scrollTo(0, y);
-  }
+  // On ne rafraîchit la liste QUE si un compteur a bougé (nouveau courrier,
+  // OCR terminé, échec…). Tant que rien ne change, on ne touche pas au DOM :
+  // c'est ce qui supprime le clignotement régulier de la liste.
+  const sig = [s.total, s.failed, s.pending, s.processing, s.reprocessing,
+               s.trashed, s.last_added].join("|");
+  const changed = state.statsSig !== null && sig !== state.statsSig;
   state.statsSig = sig;
   state.lastInFlight = inFlight;
+  if (changed && state.page === 1 && !document.querySelector("dialog[open]")) {
+    const y = window.scrollY;
+    search(true).then(() => window.scrollTo(0, y));
+  }
 }
 
 // --- aperçu ------------------------------------------------------------- //
@@ -684,8 +707,16 @@ $("#preview").addEventListener("close", () => ($("#preview-frame").src = "about:
 setView(state.view);
 loadStats();
 search();
-(async function pollLoop() {
-  await loadStats();
-  setTimeout(pollLoop, state.lastInFlight > 0 ? 5000 : 12000);
+(function pollLoop() {
+  // try/finally : la boucle de rafraîchissement ne doit JAMAIS s'arrêter,
+  // même si un tick lève une exception (sinon il faut recharger la page).
+  Promise.resolve()
+    .then(loadStats)
+    .catch((e) => console.warn("pollLoop", e))
+    .finally(() => setTimeout(pollLoop, state.lastInFlight > 0 ? 4000 : 10000));
 })();
 setInterval(tickTimers, 1000);   // compteur « OCR en cours » temps réel
+// de retour sur l'onglet : resynchronise tout de suite
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { loadStats(); search(true); }
+});

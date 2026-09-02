@@ -73,25 +73,32 @@ def register_inbox(conn, cfg: Config,
     return registered
 
 
+# nb max d'OCR par passage de scan_once en mode continu, pour laisser
+# l'enregistrement de l'inbox reprendre la main souvent (mode --once = illimité)
+_OCR_BATCH = 4
+
+
 def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]],
-              *, restart_flag: Path | None = None) -> int:
-    """1) enregistre les fichiers stables (visibles tout de suite),
-       2) OCRise les documents en attente **un par un**, en RE-scannant l'inbox
-       entre chaque OCR : sinon, un gros backlog (jusqu'ici 50 courriers d'affilée,
-       plusieurs minutes chacun) gelait la découverte des nouveaux dépôts — le
-       total restait figé puis « sautait » d'un coup à la fin du lot."""
+              *, restart_flag: Path | None = None,
+              max_ocr: int | None = None) -> bool:
+    """1) enregistre d'un coup TOUS les fichiers stables de l'inbox → ils
+       apparaissent aussitôt dans « en attente », même si l'OCR a du retard ;
+       2) OCRise au plus `max_ocr` courriers (None = jusqu'à épuisement), en
+       re-scannant l'inbox entre chaque.
+       Renvoie True s'il reste du travail (file d'OCR non vide ou fichiers encore
+       en cours de stabilisation) → la boucle repassera vite."""
     register_inbox(conn, cfg, pending)
-    processed = 0
-    while not _stop:
-        if restart_flag is not None and restart_flag.exists():
+    done = 0
+    while max_ocr is None or done < max_ocr:
+        if _stop or (restart_flag is not None and restart_flag.exists()):
             break
         ids = db.pending_doc_ids(conn, limit=1)
         if not ids:
             break
         ocr_pending_doc(conn, cfg, ids[0])
-        processed += 1
+        done += 1
         register_inbox(conn, cfg, pending)
-    return processed
+    return bool(db.pending_doc_ids(conn, limit=1)) or bool(pending)
 
 
 def auto_retry_failed(conn, cfg: Config) -> int:
@@ -182,17 +189,22 @@ def run(cfg: Config, once: bool = False) -> None:
             restart_flag.unlink(missing_ok=True)
             log.info("redémarrage demandé — sortie (systemd relancera)")
             break
+        backlog = False
         try:
             process_reocr(conn, cfg)
             auto_retry_failed(conn, cfg)
-            scan_once(conn, cfg, pending, restart_flag=restart_flag)
+            backlog = scan_once(conn, cfg, pending, restart_flag=restart_flag,
+                                max_ocr=None if once else _OCR_BATCH)
         except Exception:  # noqa: BLE001 — la boucle ne doit jamais mourir
             log.exception("erreur inattendue dans la boucle du worker")
 
         if once:
             break
-        for _ in range(int(max(1, cfg.poll_interval_seconds) * 10)):
-            if _stop:
+        # backlog en cours : on repasse dans 1 s (l'inbox est ré-enregistrée à
+        # fond → « en attente » reflète tout de suite le nombre réel de courriers)
+        delay = 1.0 if backlog else max(1.0, cfg.poll_interval_seconds)
+        for _ in range(int(delay * 10)):
+            if _stop or restart_flag.exists():
                 break
             time.sleep(0.1)
 

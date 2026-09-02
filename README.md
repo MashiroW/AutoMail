@@ -249,8 +249,11 @@ courrier apparaît, cherchable.
 - Interface soignée : icônes SVG, écrans de chargement (skeletons), micro-
   animations (respecte `prefers-reduced-motion`), en-tête et barre d'outils
   collants.
-- **La liste se rafraîchit toute seule** quand le contenu change (nouveau scan,
-  OCR terminé…), sans perdre la position de lecture.
+- **La liste se rafraîchit toute seule** quand un compteur bouge (nouveau scan,
+  OCR terminé, échec…), sans perdre la position de lecture. Tant que rien ne
+  change, le DOM n'est pas retouché — plus de clignotement à intervalle régulier.
+  Les compteurs (en attente / en cours / échecs) sont sondés toutes les 4 à 10 s
+  et resynchronisés dès qu'on revient sur l'onglet.
 
 ## Réglages — `config.toml`
 

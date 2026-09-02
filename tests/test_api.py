@@ -220,6 +220,18 @@ def test_inbox_rescannee_pendant_le_backlog(cfg, conn, drop_letter, monkeypatch)
     assert all(r["ocr_status"] == "ok" for r in rows)
 
 
+def test_tout_le_lot_visible_en_attente(cfg, conn, drop_letter):
+    """Un lot déposé doit basculer en 'pending' d'un coup (visible dans
+    « en attente »), pas être découvert un courrier à la fois."""
+    from courriers_ocr import worker
+    for i in range(6):
+        drop_letter(f"lot{i}", "x", pdf_bytes=f"%PDF-1.4 {i}\n%%EOF".encode())
+
+    more = worker.scan_once(conn, cfg, {}, max_ocr=0)   # enregistre, aucun OCR
+    assert more is True
+    assert len(db.pending_doc_ids(conn, limit=50)) == 6
+
+
 def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):
     drop_letter("revient", LETTER)
     ingest()
