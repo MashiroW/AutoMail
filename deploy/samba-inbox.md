@@ -1,61 +1,37 @@
-# Partager l'inbox par le réseau (optionnel)
+# Partage réseau pour le scanner
 
-Pour que le scanner ScanSnap (ou n'importe quel poste) dépose les PDF directement
-dans le dossier surveillé, on expose `/var/lib/courriers-ocr/inbox` en partage
-Samba.
+Le but : que le scanner (profil « scan vers dossier réseau ») dépose ses PDF
+directement dans l'inbox d'AutoMail (`<clone>/data/inbox`).
 
-## 1. Installer Samba
+## Automatique
 
 ```bash
-sudo apt install samba
+sudo bash deploy/setup-samba.sh
 ```
 
-## 2. Déclarer le partage
+Crée un partage Samba **invité** (sans mot de passe) nommé `scans`, pointé sur
+l'inbox, avec `force user = <toi>` pour que les fichiers arrivent avec le bon
+propriétaire. Affiche le chemin réseau à mettre dans le logiciel du scanner
+(`\\<ip-du-pi>\scans`).
 
-Ajouter à la fin de `/etc/samba/smb.conf` :
+Nom de partage personnalisé : `sudo bash deploy/setup-samba.sh mon-nom`.
+
+## Repointer un partage existant
+
+Si tu as déjà un partage qui fonctionne (le scanner écrit déjà dedans), le plus
+simple est de ne **rien changer côté scanner** et juste de rediriger le partage :
+dans `/etc/samba/smb.conf`, dans ton bloc `[...]`, mets
 
 ```ini
-[courriers-inbox]
-   path = /var/lib/courriers-ocr/inbox
-   browseable = yes
-   read only = no
-   force user = courriers
-   force group = courriers
+   path = /chemin/vers/<clone>/data/inbox
+   force user = pi
    create mask = 0664
    directory mask = 0775
-   # Restreindre au réseau local :
-   hosts allow = 192.168.0.0/16 127.0.0.1
-   hosts deny = 0.0.0.0/0
 ```
 
-## 3. Créer l'utilisateur Samba
+puis `sudo systemctl restart smbd`.
 
-```bash
-sudo smbpasswd -a courriers      # définir un mot de passe pour le partage
-sudo systemctl restart smbd
-```
+## Sans Samba
 
-## 4. Configurer le scanner
-
-Dans **ScanSnap Home**, créer un profil **« Scan vers dossier »** (Scan to Folder)
-et pointer le dossier de destination sur :
-
-```
-\\raspberrypi\courriers-inbox
-```
-
-(remplacer `raspberrypi` par le nom d'hôte réel de la Pi, ou son IP).
-
-Format de sortie : **PDF** (pas « PDF cherchable » : c'est la Pi qui s'en charge).
-Un PDF par courrier, résolution 300 dpi conseillée.
-
-Dès qu'un fichier arrive et que sa taille est stable, le worker le récupère,
-l'OCRise et l'indexe. Il disparaît de l'inbox une fois traité (déplacé dans
-`originals/AAAA/MM/`).
-
-## Alternative sans Samba
-
-- **Dossier synchronisé** (Syncthing, Nextcloud…) dont un côté est
-  `/var/lib/courriers-ocr/inbox`.
-- **SFTP** : `scp courrier.pdf courriers@raspberrypi:/var/lib/courriers-ocr/inbox/`.
-- **clé USB / script** : n'importe quel moyen qui écrit un `.pdf` dans l'inbox.
+N'importe quoi qui écrit un `.pdf` dans `<clone>/data/inbox` convient :
+Syncthing, `scp`, un montage NFS, une clé USB + script…

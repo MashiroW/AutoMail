@@ -3,13 +3,15 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.python/
 *.egg-info/
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Données locales de dev
+# Installation en place : tout vit dans le dossier cloné
 data/
+demo*/
 inbox/
 *.db
 *.db-wal

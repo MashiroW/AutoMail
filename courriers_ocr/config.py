@@ -83,7 +83,7 @@ class Config:
 
     @property
     def db_path(self) -> Path:
-        return self.data_dir / "data" / "courriers.db"
+        return self.data_dir / "courriers.db"
 
     def ensure_dirs(self) -> None:
         for p in (

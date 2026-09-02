@@ -1,70 +1,145 @@
 #!/usr/bin/env bash
-# Installe la banque de courriers OCR sur une Raspberry Pi (Raspberry Pi OS / Debian 12).
-# À lancer depuis la racine du dépôt :  sudo deploy/install.sh
+#
+# Installe AutoMail « en place » : tout vit dans CE dossier cloné —
+#   <clone>/.venv/        environnement Python
+#   <clone>/.python/      Python 3.11 portable (seulement si l'OS est trop vieux)
+#   <clone>/config.toml   configuration locale
+#   <clone>/data/         inbox, originaux, ocr, base SQLite, vignettes…
+#
+# Seule chose posée ailleurs : 2 unités systemd dans /etc/systemd/system/,
+# qui pointent simplement vers ce dossier.
+#
+# Usage :   sudo bash deploy/install.sh
+#
 set -euo pipefail
 
-APP_DIR=/opt/courriers-ocr
-DATA_DIR=/var/lib/courriers-ocr
-ETC_DIR=/etc/courriers-ocr
-SVC_USER=courriers
-SRC="$(cd "$(dirname "$0")/.." && pwd)"
+CLONE="$(cd "$(dirname "$0")/.." && pwd)"
+RUN_USER="${SUDO_USER:-$(id -un)}"
+RUN_GROUP="$(id -gn "$RUN_USER")"
+PY_FALLBACK_VERSION=3.11.9
 
-if [[ $EUID -ne 0 ]]; then
-  echo "Ce script doit être lancé avec sudo." >&2
-  exit 1
-fi
+[[ $EUID -eq 0 ]] || { echo "À lancer avec sudo." >&2; exit 1; }
+log() { printf '\n==> %s\n' "$*"; }
 
-echo "==> Paquets système"
+# --------------------------------------------------------------------------- #
+log "Anciens services (le cas échéant)"
+for old in courriers-ocr-worker courriers-ocr-web; do
+  systemctl disable --now "$old" 2>/dev/null || true
+  rm -f "/etc/systemd/system/$old.service"
+done
+
+# --------------------------------------------------------------------------- #
+log "Paquets système (OCR + outils PDF)"
 apt-get update
 apt-get install -y --no-install-recommends \
   ocrmypdf \
   tesseract-ocr-fra tesseract-ocr-deu tesseract-ocr-ara \
-  poppler-utils \
-  python3 python3-venv python3-pip \
-  rsync
+  poppler-utils unpaper pngquant \
+  ca-certificates curl rsync xz-utils
 
-echo "==> Utilisateur système '$SVC_USER'"
-id -u "$SVC_USER" &>/dev/null || \
-  useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$SVC_USER"
+# --------------------------------------------------------------------------- #
+log "Python (≥ 3.10)"
+PYBIN=""
+if command -v python3 >/dev/null && \
+   python3 -c 'import sys;exit(0 if sys.version_info>=(3,10) else 1)' 2>/dev/null; then
+  apt-get install -y --no-install-recommends python3-venv
+  PYBIN="$(command -v python3)"
+  echo "Python du système : $("$PYBIN" -V)"
+elif [[ -x "$CLONE/.python/bin/python3" ]]; then
+  PYBIN="$CLONE/.python/bin/python3"
+  echo "Python portable déjà présent : $("$PYBIN" -V)"
+else
+  echo "Python du système trop ancien -> récupération d'un binaire portable 3.11."
+  case "$(uname -m)" in
+    armv7l|armv6l) TRIPLE=armv7-unknown-linux-gnueabihf ;;
+    aarch64)       TRIPLE=aarch64-unknown-linux-gnu ;;
+    x86_64)        TRIPLE=x86_64-unknown-linux-gnu ;;
+    *)             TRIPLE="" ;;
+  esac
+  URL=""
+  [[ -n "$TRIPLE" ]] && URL=$(curl -fsSL \
+    https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest \
+    | grep -oE "https://[^\"]*cpython-3\.11\.[0-9]+\+[0-9]+-${TRIPLE}-install_only(_stripped)?\.tar\.gz" \
+    | head -n1 || true)
 
-echo "==> Arborescence des données ($DATA_DIR)"
-mkdir -p "$DATA_DIR"/{inbox,originals/duplicates,ocr,thumbnails,text,failed,trash,tmp,data}
-chown -R "$SVC_USER":"$SVC_USER" "$DATA_DIR"
-
-echo "==> Code applicatif ($APP_DIR)"
-mkdir -p "$APP_DIR"
-rsync -a --delete \
-  --exclude .git --exclude .venv --exclude data --exclude '__pycache__' \
-  --exclude '.pytest_cache' \
-  "$SRC"/ "$APP_DIR"/
-chown -R "$SVC_USER":"$SVC_USER" "$APP_DIR"
-
-echo "==> Environnement Python"
-python3 -m venv "$APP_DIR/.venv"
-"$APP_DIR/.venv/bin/pip" install --upgrade pip
-"$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
-chown -R "$SVC_USER":"$SVC_USER" "$APP_DIR/.venv"
-
-echo "==> Configuration ($ETC_DIR)"
-mkdir -p "$ETC_DIR"
-if [[ ! -f "$ETC_DIR/courriers-ocr.env" ]]; then
-  cp "$SRC/deploy/courriers-ocr.env.example" "$ETC_DIR/courriers-ocr.env"
-  echo "   -> $ETC_DIR/courriers-ocr.env créé (éditez-le si besoin)"
+  if [[ -n "$URL" ]]; then
+    echo "Téléchargement : $URL"
+    curl -fSL "$URL" -o /tmp/py.tgz
+    rm -rf "$CLONE/.python" && mkdir -p "$CLONE/.python"
+    tar -xzf /tmp/py.tgz -C "$CLONE/.python" --strip-components=1
+    rm -f /tmp/py.tgz
+  else
+    echo "Aucun binaire portable pour $(uname -m) -> compilation (~20 min)."
+    apt-get install -y --no-install-recommends \
+      build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
+      libsqlite3-dev libffi-dev liblzma-dev libncursesw5-dev uuid-dev tk-dev
+    curl -fSL "https://www.python.org/ftp/python/${PY_FALLBACK_VERSION}/Python-${PY_FALLBACK_VERSION}.tgz" -o /tmp/pysrc.tgz
+    rm -rf /tmp/pysrc && mkdir -p /tmp/pysrc
+    tar -xzf /tmp/pysrc.tgz -C /tmp/pysrc --strip-components=1
+    ( cd /tmp/pysrc && ./configure --prefix="$CLONE/.python" --with-ensurepip=install \
+      && make -j"$(nproc)" && make install )
+    rm -rf /tmp/pysrc /tmp/pysrc.tgz
+  fi
+  PYBIN="$CLONE/.python/bin/python3"
+  echo "Installé : $("$PYBIN" -V)"
 fi
-if [[ ! -f "$ETC_DIR/config.toml" ]]; then
-  cp "$SRC/config.example.toml" "$ETC_DIR/config.toml"
-  sed -i 's#^data_dir = .*#data_dir = "/var/lib/courriers-ocr"#' "$ETC_DIR/config.toml"
-fi
 
-echo "==> Services systemd"
-cp "$SRC/deploy/courriers-ocr-worker.service" /etc/systemd/system/
-cp "$SRC/deploy/courriers-ocr-web.service" /etc/systemd/system/
+# --------------------------------------------------------------------------- #
+log "Environnement Python (venv + dépendances)"
+"$PYBIN" -m venv "$CLONE/.venv"
+"$CLONE/.venv/bin/pip" install --upgrade pip
+"$CLONE/.venv/bin/pip" install -r "$CLONE/requirements.txt"
+
+# --------------------------------------------------------------------------- #
+log "Configuration et dossiers de données"
+if [[ ! -f "$CLONE/config.toml" ]]; then
+  cp "$CLONE/config.example.toml" "$CLONE/config.toml"
+fi
+sed -i "s#^data_dir = .*#data_dir = \"$CLONE/data\"#" "$CLONE/config.toml"
+mkdir -p "$CLONE"/data/{inbox,originals/duplicates,ocr,thumbnails,text,failed,trash,tmp}
+
+chown -R "$RUN_USER:$RUN_GROUP" "$CLONE"
+
+# --------------------------------------------------------------------------- #
+log "Services systemd"
+write_unit() {
+  local name="$1" desc="$2" cmd="$3"
+  cat > "/etc/systemd/system/$name.service" <<EOF
+[Unit]
+Description=$desc
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$RUN_USER
+Group=$RUN_GROUP
+WorkingDirectory=$CLONE
+ExecStart=$CLONE/.venv/bin/python -m $cmd
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+write_unit automail-worker "AutoMail — worker OCR (surveillance de l'inbox)" courriers_ocr.worker
+write_unit automail-web    "AutoMail — interface web / API"                  courriers_ocr.serve
+
 systemctl daemon-reload
-systemctl enable --now courriers-ocr-worker.service courriers-ocr-web.service
+systemctl enable --now automail-worker.service automail-web.service
 
-PORT="$(grep -E '^COURRIERS_PORT=' "$ETC_DIR/courriers-ocr.env" | cut -d= -f2 || echo 8080)"
-echo
-echo "Terminé."
-echo "  Interface :   http://$(hostname).local:${PORT:-8080}/"
-echo "  Dépôt scans : $DATA_DIR/inbox"
-echo "  Journaux :    journalctl -u courriers-ocr-worker -f"
+# --------------------------------------------------------------------------- #
+IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+PORT="$(grep -E '^\s*port\s*=' "$CLONE/config.toml" | grep -oE '[0-9]+' | head -n1)"
+cat <<EOF
+
+Terminé — tout est dans : $CLONE
+  Interface :    http://${IP:-<ip-du-pi>}:${PORT:-8080}/
+  Dépôt scans :  $CLONE/data/inbox
+  Config :       $CLONE/config.toml
+  Logs :         journalctl -u automail-worker -f   (et automail-web)
+  Mise à jour :  git pull && sudo systemctl restart automail-worker automail-web
+  Partage réseau pour le scanner :  sudo bash deploy/setup-samba.sh
+EOF
