@@ -271,7 +271,12 @@ $("#search").addEventListener("keydown", (e) => {
 $("#status").addEventListener("change", () => { syncTrashButton(); state.page = 1; search(); });
 $("#empty-trash").addEventListener("click", emptyTrash);
 $("#reset").addEventListener("click", () => {
-  $("#search").reset(); $("#status").value = "ok"; syncTrashButton(); state.page = 1; search();
+  for (const id of ["q", "date_from", "date_to", "correspondent"]) $("#" + id).value = "";
+  $("#status").value = "ok";
+  $("#sort").value = "date";
+  syncTrashButton();
+  state.page = 1;
+  search();
 });
 $("#prev").addEventListener("click", () => { if (state.page > 1) { state.page--; search(); } });
 $("#next").addEventListener("click", () => { state.page++; search(); });
