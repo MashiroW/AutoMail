@@ -22,11 +22,21 @@ PY_FALLBACK_VERSION=3.11.9
 log() { printf '\n==> %s\n' "$*"; }
 
 # --------------------------------------------------------------------------- #
-log "Anciens services (le cas échéant)"
+log "Anciens services / anciens emplacements (le cas échéant)"
 for old in courriers-ocr-worker courriers-ocr-web; do
   systemctl disable --now "$old" 2>/dev/null || true
   rm -f "/etc/systemd/system/$old.service"
 done
+systemctl daemon-reload 2>/dev/null || true
+# ancien code (aucune donnée dedans) : on peut le retirer sans risque
+rm -rf /opt/courriers-ocr /etc/courriers-ocr
+LEGACY_DATA=/var/lib/courriers-ocr
+if [[ -d "$LEGACY_DATA" ]]; then
+  echo "!! Ancien dossier de données encore présent : $LEGACY_DATA"
+  echo "   (courriers d'un install précédent). À supprimer toi-même une fois"
+  echo "   que tu as vérifié que la nouvelle install fonctionne :"
+  echo "     sudo rm -rf $LEGACY_DATA"
+fi
 
 # --------------------------------------------------------------------------- #
 log "Paquets système (OCR + outils PDF)"
