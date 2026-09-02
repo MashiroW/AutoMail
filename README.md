@@ -122,6 +122,11 @@ tampons / manuscrit, et surtout `--force-ocr`. Un courrier de 10 pages peut
 donc légitimement prendre 5–10 min sur un Pi 4 — la carte affiche le chrono en
 direct pendant ce temps.
 
+Les courriers sont traités **un par un**, dans l'ordre d'arrivée. Le worker
+re-scanne l'inbox **entre chaque OCR** : un nouveau dépôt apparaît donc dans les
+compteurs (« en attente », total) en quelques secondes, même si une longue file
+est en cours de traitement.
+
 ## Installation
 
 ### 1. Récupérer le code

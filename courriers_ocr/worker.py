@@ -44,10 +44,10 @@ def _is_candidate(p: Path) -> bool:
     return p.suffix.lower() == ".pdf"
 
 
-def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]]) -> int:
-    """1) enregistre les fichiers stables (visibles tout de suite),
-       2) OCRise les documents en attente, un par un."""
-    processed = 0
+def register_inbox(conn, cfg: Config,
+                   pending: dict[Path, tuple[int, float, int]]) -> int:
+    """Repère les PDF *stables* de l'inbox et les enregistre (phase 1, rapide,
+    aucune OCR). Renvoie le nombre de courriers nouvellement enregistrés."""
     current = (
         {p for p in cfg.inbox.iterdir() if _is_candidate(p)}
         if cfg.inbox.is_dir() else set()
@@ -55,6 +55,7 @@ def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]]) ->
     for gone in [p for p in pending if p not in current]:
         pending.pop(gone, None)
 
+    registered = 0
     for path in sorted(current):
         try:
             st = path.stat()
@@ -67,13 +68,29 @@ def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]]) ->
         pending[path] = (size, mtime, stable)
         if stable + 1 >= cfg.stable_checks:
             pending.pop(path, None)
-            register_file(conn, cfg, path)
+            if register_file(conn, cfg, path) is not None:
+                registered += 1
+    return registered
 
-    for doc_id in db.pending_doc_ids(conn, limit=50):
-        ocr_pending_doc(conn, cfg, doc_id)
-        processed += 1
-        if _stop:
+
+def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]],
+              *, restart_flag: Path | None = None) -> int:
+    """1) enregistre les fichiers stables (visibles tout de suite),
+       2) OCRise les documents en attente **un par un**, en RE-scannant l'inbox
+       entre chaque OCR : sinon, un gros backlog (jusqu'ici 50 courriers d'affilée,
+       plusieurs minutes chacun) gelait la découverte des nouveaux dépôts — le
+       total restait figé puis « sautait » d'un coup à la fin du lot."""
+    register_inbox(conn, cfg, pending)
+    processed = 0
+    while not _stop:
+        if restart_flag is not None and restart_flag.exists():
             break
+        ids = db.pending_doc_ids(conn, limit=1)
+        if not ids:
+            break
+        ocr_pending_doc(conn, cfg, ids[0])
+        processed += 1
+        register_inbox(conn, cfg, pending)
     return processed
 
 
@@ -168,7 +185,7 @@ def run(cfg: Config, once: bool = False) -> None:
         try:
             process_reocr(conn, cfg)
             auto_retry_failed(conn, cfg)
-            scan_once(conn, cfg, pending)
+            scan_once(conn, cfg, pending, restart_flag=restart_flag)
         except Exception:  # noqa: BLE001 — la boucle ne doit jamais mourir
             log.exception("erreur inattendue dans la boucle du worker")
 

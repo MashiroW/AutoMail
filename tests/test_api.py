@@ -194,6 +194,32 @@ def test_auto_retry_abandonne_apres_3(cfg, conn):
     assert auto_retry_failed(conn, cfg) == 0
 
 
+def test_inbox_rescannee_pendant_le_backlog(cfg, conn, drop_letter, monkeypatch):
+    """Un courrier déposé PENDANT le traitement d'un lot doit être enregistré et
+    traité dans la même passe — pas seulement au prochain cycle (bug : total figé
+    puis qui saute d'un coup)."""
+    from courriers_ocr import worker
+
+    drop_letter("a", "Paris, le 1 mars 2024\nun", pdf_bytes=b"%PDF-1.4 a\n%%EOF")
+    drop_letter("b", "Paris, le 2 mars 2024\ndeux", pdf_bytes=b"%PDF-1.4 b\n%%EOF")
+
+    real = worker.ocr_pending_doc
+    dropped: list = []
+
+    def spy(c, cf, doc_id):
+        if not dropped:                       # au 1er OCR, un nouveau scan arrive
+            dropped.append(drop_letter(
+                "c", "Paris, le 3 mars 2024\ntrois", pdf_bytes=b"%PDF-1.4 c\n%%EOF"))
+        return real(c, cf, doc_id)
+
+    monkeypatch.setattr(worker, "ocr_pending_doc", spy)
+    worker.scan_once(conn, cfg, {})
+
+    rows = conn.execute("SELECT original_filename, ocr_status FROM documents").fetchall()
+    assert {r["original_filename"] for r in rows} == {"a.pdf", "b.pdf", "c.pdf"}
+    assert all(r["ocr_status"] == "ok" for r in rows)
+
+
 def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):
     drop_letter("revient", LETTER)
     ingest()
