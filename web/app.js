@@ -263,7 +263,7 @@ async function loadStats() {
   try { s = await api("/stats"); } catch { return; }
   const parts = [`<b>${s.total}</b> courriers`];
   const inFlight = (s.pending || 0) + (s.reprocessing || 0);
-  state.lastInFlight = inFlight;
+  const prevInFlight = state.lastInFlight;
   if (inFlight) parts.push(`<span class="busy">${inFlight} en traitement</span>`);
   if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
   parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
@@ -274,14 +274,19 @@ async function loadStats() {
   }
   $("#stats").innerHTML = parts.join(" · ");
 
-  const sig = [s.total, s.failed, s.trashed, s.last_added].join("|");
-  if (state.statsSig !== null && sig !== state.statsSig &&
-      state.page === 1 && !document.querySelector("dialog[open]")) {
+  // rafraîchit la liste si l'état a changé OU si un traitement est/était en cours
+  // (un courrier qui passe non traité -> traité ne bouge aucun compteur global)
+  const sig = [s.total, s.failed, s.pending, s.reprocessing, s.trashed, s.last_added].join("|");
+  const shouldRefresh =
+    (state.statsSig !== null && sig !== state.statsSig) ||
+    inFlight > 0 || prevInFlight > 0;
+  if (shouldRefresh && state.page === 1 && !document.querySelector("dialog[open]")) {
     const y = window.scrollY;
     await search(true);
     window.scrollTo(0, y);
   }
   state.statsSig = sig;
+  state.lastInFlight = inFlight;
 }
 
 // --- aperçu ------------------------------------------------------------- //
