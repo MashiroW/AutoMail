@@ -103,6 +103,25 @@ l'installation, qui pointent vers ce dossier. Sauvegarder = archiver le dossier.
 - Raspberry Pi 4 / 5, 2 Go de RAM minimum ; un SSD USB est conseillé pour l'archive.
 - OCR sur Pi 4 : ~10 à 40 s par page selon la qualité du scan.
 
+## Comment fonctionne l'OCR
+
+`ocrmypdf` traite le courrier **page par page**, en série (un seul cœur CPU
+utilisé, `Nice=10`) :
+
+1. rendu de la page en image si besoin (les PDF déjà numériques gardent leur
+   texte grâce à `--skip-text` ; en 2ᵉ tentative, `--force-ocr` rerastérise
+   **toutes** les pages → plus lent mais plus robuste) ;
+2. redressement / rotation automatique (`--deskew`, `--rotate-pages`) ;
+3. reconnaissance de texte par **Tesseract** (langue `fra` par défaut) ;
+4. réassemblage : la couche texte est réinjectée dans le PDF, le texte brut
+   part dans l'index plein-texte.
+
+Le temps total ≈ `nombre de pages × temps par page`. Ce qui fait grimper le
+temps par page : scan basse résolution ou de travers, pages très denses,
+tampons / manuscrit, et surtout `--force-ocr`. Un courrier de 10 pages peut
+donc légitimement prendre 5–10 min sur un Pi 4 — la carte affiche le chrono en
+direct pendant ce temps.
+
 ## Installation
 
 ### 1. Récupérer le code
@@ -183,6 +202,14 @@ courrier apparaît, cherchable.
 - Un **échec** d'OCR affiche sa **raison** sur la carte et dans la fiche ; le
   courrier reste ouvrable / téléchargeable. Le 2ᵉ essai automatique passe en
   `--force-ocr` (rasterisation, plus robuste).
+- **Temps de traitement** : pendant l'OCR, la carte affiche un chrono qui défile
+  en direct (`OCR en cours… 1:12 · ~0:40 restant`, l'estimation venant de la
+  moyenne s/page des 25 derniers courriers). Une fois fini, la fiche *Modifier*
+  indique la durée totale et la moyenne par page.
+- Le bandeau d'état montre **« dont N traités »** tant qu'il reste des courriers
+  en attente / en cours : ce nombre monte à chaque OCR terminé (le total global,
+  lui, ne bouge pas — un courrier est compté dès son dépôt, pas à la fin de
+  l'OCR ; c'est normal de ne rien voir apparaître dans « échecs »).
 - **Avancement** : chaque courrier a une pastille de couleur — *à faire*,
   *en cours*, *fait* (défaut). Clic sur la pastille pour la faire tourner ;
   modifiable aussi dans la fiche *Modifier* et en groupe.

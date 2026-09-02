@@ -87,6 +87,8 @@ def _row_to_out(row: dict) -> DocumentOut:
         ocr_language=row.get("ocr_language"),
         lang_guess=row.get("lang_guess"),
         ocr_attempts=row.get("ocr_attempts") or 0,
+        ocr_started_at=row.get("ocr_started_at"),
+        ocr_seconds=row.get("ocr_seconds"),
         progress=row.get("progress") or "done",
         snippet=row.get("snippet") or None,
         has_thumbnail=bool(row.get("thumbnail_path")),

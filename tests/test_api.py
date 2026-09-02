@@ -292,9 +292,11 @@ def test_courrier_visible_avant_ocr(cfg, conn, client):
     r = client.get(f"/api/documents/{doc_id}/pdf")
     assert r.status_code == 200 and r.content == b"%PDF-1.4 en attente\n%%EOF"
 
-    # après l'OCR -> "traités"
+    # après l'OCR -> "traités" + durée de traitement enregistrée
     ocr_pending_doc(conn, cfg, doc_id)
-    assert client.get(f"/api/documents/{doc_id}").json()["ocr_status"] == "ok"
+    done = client.get(f"/api/documents/{doc_id}").json()
+    assert done["ocr_status"] == "ok"
+    assert done["ocr_seconds"] is not None and done["ocr_seconds"] >= 0
     assert client.get("/api/documents", params={"status": "pending"}).json()["total"] == 0
 
 

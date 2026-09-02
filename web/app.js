@@ -16,6 +16,7 @@ const state = {
   selected: new Set(),
   statsSig: null,
   lastInFlight: 0,
+  avgSecPerPage: null,
 };
 
 const LANGS = { fra: "français", deu: "allemand", ara: "arabe", eng: "anglais", fr: "français", de: "allemand", en: "anglais" };
@@ -102,6 +103,32 @@ function fmtDate(iso) {
   const [y, m, d] = iso.slice(0, 10).split("-");
   return `${d}/${m}/${y}`;
 }
+// durée lisible : « 45 s », « 3 min 20 s », « 1 h 4 min »
+function fmtDuration(sec) {
+  if (sec == null || isNaN(sec)) return "";
+  sec = Math.round(sec);
+  if (sec < 60) return sec + " s";
+  const m = Math.floor(sec / 60), s = sec % 60;
+  if (m < 60) return s ? `${m} min ${s} s` : `${m} min`;
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+// chrono compact mm:ss pour le compteur temps réel
+function clock(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+// met à jour tous les compteurs « OCR en cours » visibles, sans requête réseau
+function tickTimers() {
+  for (const el of document.querySelectorAll("[data-since]")) {
+    const t0 = Date.parse(el.dataset.since);
+    if (isNaN(t0)) continue;
+    const elapsed = (Date.now() - t0) / 1000;
+    const eta = Number(el.dataset.eta || 0);
+    let txt = clock(elapsed);
+    if (eta && eta > elapsed + 3) txt += ` · ~${clock(eta - elapsed)} restant`;
+    el.textContent = `${el.dataset.label} ${txt}`;
+  }
+}
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -169,8 +196,13 @@ function render(items) {
     const badges = [];
     if (doc.ocr_status === "pending")
       badges.push(`<span class="badge busy">en attente d'OCR</span>`);
-    if (doc.ocr_status === "processing")
-      badges.push(`<span class="badge busy">OCR en cours…</span>`);
+    if (doc.ocr_status === "processing") {
+      const eta = (doc.page_count && state.avgSecPerPage)
+        ? Math.round(doc.page_count * state.avgSecPerPage) : "";
+      badges.push(
+        `<span class="badge busy" data-since="${doc.ocr_started_at || ""}" ` +
+        `data-eta="${eta}" data-label="OCR en cours…">OCR en cours…</span>`);
+    }
     if (doc.ocr_status === "failed")
       badges.push(`<span class="badge fail">échec OCR (${doc.ocr_attempts}×)</span>`);
     if (doc.lang_guess && doc.lang_guess !== "fr")
@@ -216,6 +248,7 @@ function render(items) {
       </div>`;
     results.appendChild(card);
   }
+  tickTimers();
   updateSelbar();
 }
 
@@ -298,9 +331,16 @@ async function bulkAction(action, value) {
 async function loadStats() {
   let s;
   try { s = await api("/stats"); } catch { return; }
-  const parts = [`<b>${s.total}</b> courriers`];
+  state.avgSecPerPage = s.avg_sec_per_page || null;
+  const parts = [`<b>${s.total}</b> courrier${s.total > 1 ? "s" : ""}`];
   const inFlight = (s.pending || 0) + (s.processing || 0) + (s.reprocessing || 0);
   const prevInFlight = state.lastInFlight;
+  // « traités » = total − en attente − en cours : ce nombre monte à chaque OCR fini,
+  // alors que le total global ne bouge pas (un courrier compte dès son dépôt).
+  if (s.pending || s.processing) {
+    const done = Math.max(0, s.total - (s.pending || 0) - (s.processing || 0));
+    parts.push(`dont <b>${done}</b> traité${done > 1 ? "s" : ""}`);
+  }
   if (s.pending) parts.push(`<span class="busy">${s.pending} en attente</span>`);
   if (s.processing) parts.push(`<span class="busy">${s.processing} en cours</span>`);
   if (s.reprocessing) parts.push(`<span class="busy">${s.reprocessing} en ré-OCR</span>`);
@@ -350,6 +390,12 @@ async function openEditor(id) {
     <dt>Pages</dt><dd>${d.page_count ?? "?"}</dd>
     <dt>Taille</dt><dd>${fmtBytes(d.bytes) || "?"}</dd>
     <dt>OCR</dt><dd>${OCRSTATUS[d.ocr_status] || d.ocr_status}${d.ocr_language ? " · " + (LANGS[d.ocr_language] || d.ocr_language) : ""}</dd>
+    <dt>Traitement OCR</dt><dd>${
+      d.ocr_seconds != null
+        ? fmtDuration(d.ocr_seconds) + (d.page_count ? ` (~${fmtDuration(d.ocr_seconds / d.page_count)}/page)` : "")
+        : d.ocr_status === "processing" && d.ocr_started_at
+          ? `<span data-since="${d.ocr_started_at}" data-eta="${d.page_count && state.avgSecPerPage ? Math.round(d.page_count * state.avgSecPerPage) : ""}" data-label="en cours…">en cours…</span>`
+          : "—"}</dd>
     <dt>Date</dt><dd>${fmtDate(d.document_date)}${d.document_date ? " (" + (d.document_date_source === "manual" ? "saisie" : "détectée") + ")" : ""}</dd>
     ${d.ocr_status === "failed" && d.notes ? `<dt>Erreur</dt><dd class="err">${esc(d.notes)}</dd>` : ""}`;
   $("#editor").showModal();
@@ -635,3 +681,4 @@ search();
   await loadStats();
   setTimeout(pollLoop, state.lastInFlight > 0 ? 5000 : 12000);
 })();
+setInterval(tickTimers, 1000);   // compteur « OCR en cours » temps réel

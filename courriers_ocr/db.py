@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS documents (
     lang_guess           TEXT,
     ocr_attempts         INTEGER NOT NULL DEFAULT 0,
     last_attempt_at      TEXT,
+    ocr_started_at       TEXT,                           -- début du dernier OCR
+    ocr_seconds          REAL,                           -- durée du dernier OCR
     progress             TEXT NOT NULL DEFAULT 'done',   -- 'todo' | 'ongoing' | 'done'
     deleted_at           TEXT
 );
@@ -94,6 +96,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE documents ADD COLUMN progress TEXT NOT NULL DEFAULT 'done'"
         )
+    if "ocr_started_at" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN ocr_started_at TEXT")
+    if "ocr_seconds" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN ocr_seconds REAL")
 
 
 # --------------------------------------------------------------------------- #
@@ -104,7 +110,7 @@ _DOC_COLUMNS = {
     "text_path", "page_count", "bytes", "added_at", "document_date",
     "document_date_source", "correspondent", "title", "notes", "ocr_status",
     "ocr_language", "lang_guess", "ocr_attempts", "last_attempt_at",
-    "progress", "deleted_at",
+    "ocr_started_at", "ocr_seconds", "progress", "deleted_at",
 }
 
 
@@ -381,6 +387,16 @@ def stats(conn: sqlite3.Connection) -> dict:
         """
     ).fetchone()
     reocr = conn.execute("SELECT COUNT(*) AS n FROM reocr_jobs").fetchone()["n"]
+    aspp = conn.execute(
+        """
+        SELECT AVG(ocr_seconds * 1.0 / page_count) AS a FROM (
+            SELECT ocr_seconds, page_count FROM documents
+            WHERE deleted_at IS NULL AND ocr_seconds IS NOT NULL
+              AND page_count IS NOT NULL AND page_count > 0
+            ORDER BY id DESC LIMIT 25
+        )
+        """
+    ).fetchone()["a"]
     return {
         "total": row["total"] or 0,
         "failed": row["failed"] or 0,
@@ -389,6 +405,7 @@ def stats(conn: sqlite3.Connection) -> dict:
         "trashed": row["trashed"] or 0,
         "last_added": row["last_added"],
         "reprocessing": reocr,
+        "avg_sec_per_page": round(aspp, 1) if aspp else None,
     }
 
 

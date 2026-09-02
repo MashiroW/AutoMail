@@ -7,6 +7,7 @@ import logging
 import re
 import shutil
 import sqlite3
+import time
 import traceback
 import uuid
 from datetime import date, datetime
@@ -224,6 +225,12 @@ def register_file(conn: sqlite3.Connection, cfg: Config, src: Path) -> int | Non
         thumb_dest = cfg.thumbnails_dir / f"{doc_id}.jpg"
         if make_thumbnail(orig_dest, thumb_dest, cfg.thumbnail_width):
             db.update_document(conn, doc_id, thumbnail_path=rel(cfg, thumb_dest))
+        try:
+            pages = pdf_page_count(orig_dest)
+            if pages:
+                db.update_document(conn, doc_id, page_count=pages)
+        except Exception:  # noqa: BLE001
+            pass
         db.set_fts(conn, doc_id, "", title, None)
         log.info("#%s reçu — OCR en attente", doc_id)
         return doc_id
@@ -245,7 +252,10 @@ def ocr_pending_doc(conn: sqlite3.Connection, cfg: Config, doc_id: int) -> bool:
                            notes="fichier d'origine absent du disque")
         return False
 
-    db.update_document(conn, doc_id, ocr_status="processing")  # visible « en cours »
+    # horodatage de départ : sert au chrono « live » de l'interface
+    db.update_document(conn, doc_id, ocr_status="processing",
+                       ocr_started_at=db.now_iso(), ocr_seconds=None)
+    t0 = time.monotonic()
     tmp_out = cfg.tmp_dir / f"{uuid.uuid4().hex}.pdf"
     tmp_txt = tmp_out.with_suffix(".txt")
     try:
@@ -258,11 +268,14 @@ def ocr_pending_doc(conn: sqlite3.Connection, cfg: Config, doc_id: int) -> bool:
             keep_date=(doc["document_date_source"] == "manual"),
             title=doc["title"], correspondent=doc["correspondent"],
         )
-        log.info("#%s indexé — %s p., date=%s, statut=%s",
-                 doc_id, page_count, doc_date or "?", result.status)
+        elapsed = round(time.monotonic() - t0, 1)
+        db.update_document(conn, doc_id, ocr_seconds=elapsed)
+        log.info("#%s indexé — %s p., date=%s, statut=%s, %ss",
+                 doc_id, page_count, doc_date or "?", result.status, elapsed)
         return True
     except Exception as exc:  # noqa: BLE001
-        _handle_failure(conn, cfg, src, doc["original_filename"], None, doc_id, exc)
+        _handle_failure(conn, cfg, src, doc["original_filename"], None, doc_id, exc,
+                        seconds=round(time.monotonic() - t0, 1))
         return False
     finally:
         for p in (tmp_out, tmp_txt):
@@ -279,7 +292,7 @@ def process_one_file(conn: sqlite3.Connection, cfg: Config, src: Path) -> int | 
 
 def _handle_failure(conn, cfg: Config, src: Path, original_filename: str,
                     sha: str | None, doc_id: int | None,
-                    exc: Exception) -> int | None:
+                    exc: Exception, seconds: float | None = None) -> int | None:
     detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     if isinstance(exc, OcrError):
         detail = f"{exc}\n\n{detail}"
@@ -294,7 +307,8 @@ def _handle_failure(conn, cfg: Config, src: Path, original_filename: str,
             except OSError:
                 pass
         db.update_document(conn, doc_id, ocr_status="failed", ocr_attempts=1,
-                           last_attempt_at=db.now_iso(), notes=str(exc)[:500])
+                           last_attempt_at=db.now_iso(), notes=str(exc)[:500],
+                           ocr_seconds=seconds)
         return doc_id
 
     failed_pdf = _unique(cfg.failed_dir / safe_name(original_filename))
@@ -338,6 +352,9 @@ def reprocess_failed_doc(conn: sqlite3.Connection, cfg: Config, doc: dict) -> bo
                            notes="fichier d'origine absent du disque")
         return False
 
+    db.update_document(conn, doc_id, ocr_status="processing",
+                       ocr_started_at=db.now_iso(), ocr_seconds=None)
+    t0 = time.monotonic()
     tmp_out = cfg.tmp_dir / f"{uuid.uuid4().hex}.pdf"
     tmp_txt = tmp_out.with_suffix(".txt")
     try:
@@ -351,15 +368,17 @@ def reprocess_failed_doc(conn: sqlite3.Connection, cfg: Config, doc: dict) -> bo
             keep_date=(doc["document_date_source"] == "manual"),
             title=doc["title"], correspondent=doc["correspondent"],
         )
+        elapsed = round(time.monotonic() - t0, 1)
         db.update_document(conn, doc_id, ocr_attempts=attempts,
-                           last_attempt_at=db.now_iso())
+                           last_attempt_at=db.now_iso(), ocr_seconds=elapsed)
         src.with_suffix(src.suffix + ".log").unlink(missing_ok=True)
-        log.info("retry #%s : réussi (statut=%s)", doc_id, result.status)
+        log.info("retry #%s : réussi (statut=%s, %ss)", doc_id, result.status, elapsed)
         return True
     except Exception as exc:  # noqa: BLE001
         log.warning("retry #%s : encore en échec (%s)", doc_id, exc)
-        db.update_document(conn, doc_id, ocr_attempts=attempts,
-                           last_attempt_at=db.now_iso(), notes=str(exc)[:500])
+        db.update_document(conn, doc_id, ocr_status="failed", ocr_attempts=attempts,
+                           last_attempt_at=db.now_iso(), notes=str(exc)[:500],
+                           ocr_seconds=round(time.monotonic() - t0, 1))
         return False
     finally:
         for p in (tmp_out, tmp_txt):

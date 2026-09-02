@@ -19,6 +19,8 @@ class DocumentOut(BaseModel):
     ocr_language: str | None = None
     lang_guess: str | None = None
     ocr_attempts: int = 0
+    ocr_started_at: str | None = None
+    ocr_seconds: float | None = None
     progress: str = "done"
     snippet: str | None = None
     has_thumbnail: bool = False
@@ -59,6 +61,7 @@ class StatsOut(BaseModel):
     reprocessing: int = 0
     pending: int = 0
     processing: int = 0
+    avg_sec_per_page: float | None = None
     last_added: str | None = None
     cpu_temp_c: float | None = None
     disk_free_bytes: int
