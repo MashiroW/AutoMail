@@ -27,7 +27,14 @@ port = 8080
 thumbnail_width = 400
 
 # Arguments supplémentaires passés à ocrmypdf.
-ocr_extra_args = ["--rotate-pages", "--deskew", "--clean"]
+# --clean (nettoyage via unpaper) est puissant mais gourmand en RAM et inutile
+# sur un scan déjà propre ; à ajouter seulement si tes scans sont bruités.
+ocr_extra_args = ["--rotate-pages", "--deskew"]
+
+# Type de sortie : "pdf" = PDF cherchable normal (léger, robuste) ;
+# "pdfa" = PDF/A archivistique (conversion ghostscript plus lourde et fragile
+# sur les vieux systèmes).
+ocr_output_type = "pdf"
 
 # Conserver le texte des PDF déjà numériques au lieu de les ré-OCRiser.
 ocr_skip_text = true

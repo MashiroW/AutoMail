@@ -128,6 +128,7 @@ WorkingDirectory=$CLONE
 ExecStart=$CLONE/.venv/bin/python -m $cmd
 Restart=always
 RestartSec=5
+Nice=10
 NoNewPrivileges=true
 
 [Install]

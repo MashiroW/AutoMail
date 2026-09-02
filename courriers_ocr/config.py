@@ -40,8 +40,9 @@ class Config:
     port: int = 8080
     thumbnail_width: int = 400
     ocr_extra_args: list[str] = field(
-        default_factory=lambda: ["--rotate-pages", "--deskew", "--clean"]
+        default_factory=lambda: ["--rotate-pages", "--deskew"]
     )
+    ocr_output_type: str = "pdf"   # "pdf" (cherchable, léger) ou "pdfa" (archivistique)
     ocr_skip_text: bool = True
     ocr_timeout_seconds: int = 1800
     api_token: str | None = None

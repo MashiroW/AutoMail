@@ -273,7 +273,8 @@ async function openUpdater() {
   const log = $("#upd-log");
   log.hidden = true; log.textContent = "";
   $("#upd-run").hidden = false; $("#upd-run").disabled = false;
-  $("#upd-restart").hidden = true;
+  $("#upd-restart").hidden = true; $("#upd-restart").disabled = false;
+  $("#upd-reload").hidden = true;
   $("#upd-state").textContent = "";
   $("#upd-current").textContent = "…";
   $("#updater").showModal();
@@ -326,22 +327,33 @@ async function restartServices() {
       return;
     }
   } catch { /* connexion coupée = le service redémarre, c'est bon signe */ }
-  log.textContent += "\nRedémarrage en cours, rechargement de la page…\n";
+  log.textContent += "\nRedémarrage en cours…\n";
   const t0 = Date.now();
-  while (Date.now() - t0 < 60000) {
+  let back = false;
+  while (Date.now() - t0 < 90000) {
     await new Promise((r) => setTimeout(r, 2000));
     try {
       const h = await fetch("/api/health", { cache: "no-store" });
-      if (h.ok) { location.reload(); return; }
+      if (h.ok) { back = true; break; }
     } catch { /* pas encore revenu */ }
   }
-  $("#upd-state").textContent = "le service met du temps à revenir — recharge la page manuellement";
+  if (back) {
+    log.textContent += "\n✅ Services redémarrés sur la nouvelle version.\n" +
+      "   Recharge l'interface : Ctrl + Maj + R  (ou le bouton ci-dessous).\n";
+    $("#upd-state").textContent = "à jour";
+  } else {
+    log.textContent += "\nLe service met du temps à revenir. Recharge la page dans un instant (Ctrl + Maj + R).\n";
+    $("#upd-state").textContent = "";
+  }
+  $("#upd-restart").hidden = true;
+  $("#upd-reload").hidden = false;
 }
 
 // --- événements ---------------------------------------------------------- //
 $("#update").addEventListener("click", openUpdater);
 $("#upd-run").addEventListener("click", runUpdate);
 $("#upd-restart").addEventListener("click", restartServices);
+$("#upd-reload").addEventListener("click", () => location.reload());
 $("#search").addEventListener("submit", (e) => { e.preventDefault(); state.page = 1; search(); });
 $("#search").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); state.page = 1; search(); }

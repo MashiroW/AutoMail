@@ -200,8 +200,11 @@ courrier apparaît, cherchable.
 - `ocr_languages` : `"fra"` par défaut. `"fra+deu"` si beaucoup d'allemand.
   Sinon, garder `fra` et faire un *Relancer l'OCR* ponctuel (fra / deu / ara)
   depuis la fiche d'un courrier.
-- `ocr_extra_args` : `["--rotate-pages", "--deskew", "--clean"]`. Retirer
-  `--clean` si les scans sont déjà nets (plus rapide).
+- `ocr_extra_args` : `["--rotate-pages", "--deskew"]`. Ajouter `"--clean"`
+  (nettoyage unpaper) seulement si les scans sont bruités — c'est gourmand en RAM.
+- `ocr_output_type` : `"pdf"` (cherchable, léger, robuste) ou `"pdfa"`
+  (archivistique ; conversion ghostscript plus lourde, à éviter sur un vieux
+  système).
 - `port`, `thumbnail_width`, `poll_interval_seconds`, `api_token`… — voir
   `config.example.toml` (commenté).
 

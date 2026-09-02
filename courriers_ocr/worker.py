@@ -68,19 +68,16 @@ def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]]) ->
 
 
 def auto_retry_failed(conn, cfg: Config) -> int:
-    """Retente automatiquement les courriers en échec (jusqu'à db.MAX_OCR_ATTEMPTS)."""
-    backoff = max(60, cfg.poll_interval_seconds * 4)
+    """Retente les courriers en échec, un seul par passage pour ménager le Pi."""
+    backoff = max(120, cfg.poll_interval_seconds * 6)
     cutoff = (
         datetime.now(timezone.utc) - timedelta(seconds=backoff)
     ).replace(microsecond=0).isoformat()
 
-    done = 0
-    for doc in db.retryable_failures(conn, cutoff)[:3]:
+    for doc in db.retryable_failures(conn, cutoff)[:1]:
         reprocess_failed_doc(conn, cfg, doc)
-        done += 1
-        if _stop:
-            break
-    return done
+        return 1
+    return 0
 
 
 def process_reocr(conn, cfg: Config) -> int:

@@ -40,7 +40,7 @@ def run_ocr(
     cmd = [
         "ocrmypdf",
         "--language", languages,
-        "--output-type", "pdfa",
+        "--output-type", cfg.ocr_output_type,
         "--sidecar", str(sidecar_txt),
     ]
     if cfg.ocr_skip_text:
