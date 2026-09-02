@@ -40,7 +40,8 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 def _git(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-C", str(REPO_DIR), *args],
-        capture_output=True, text=True, timeout=timeout,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=timeout,
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
 
@@ -154,7 +155,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 try:
                     proc = subprocess.Popen(
                         ["git", "-C", str(REPO_DIR), *cmd],
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        text=True, encoding="utf-8", errors="replace",
                         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
                     )
                     for line in proc.stdout:  # type: ignore[union-attr]
