@@ -51,6 +51,21 @@ function applyTheme(mode) {
   $("#theme").innerHTML = dark ? IC.sun : IC.moon;
 }
 let themeMode = LS.get("theme", "auto");
+
+// --- skin (direction visuelle) --------------------------------------------- //
+function applySkin(s) {
+  document.documentElement.dataset.skin = s;
+  $("#skin").value = s;
+  // le bouton clair/sombre ne sert que pour "corporate"
+  $("#theme").hidden = s !== "corporate";
+  applyTheme(themeMode);
+}
+let skin = LS.get("skin", "night");
+applySkin(skin);
+$("#skin").addEventListener("change", (e) => {
+  skin = e.target.value; LS.set("skin", skin); applySkin(skin);
+});
+
 applyTheme(themeMode);
 $("#theme").addEventListener("click", () => {
   themeMode = themeMode === "dark" ? "light" : "dark";
@@ -159,17 +174,18 @@ function render(items) {
     if (doc.lang_guess && doc.lang_guess !== "fr")
       badges.push(`<span class="badge lang">langue&nbsp;? ${LANGS[doc.lang_guess] || doc.lang_guess}</span>`);
 
-    const dl = `<a class="btn" href="/api/documents/${doc.id}/download">${IC.download}Télécharger</a>`;
-    const edit = `<button data-act="edit" data-id="${doc.id}">${IC.edit}Modifier</button>`;
-    const view = `<button data-act="preview" data-id="${doc.id}">${IC.eye}Aperçu</button>`;
+    const btn = (extra, ic, label) => `<button ${extra} title="${label}">${ic}<span>${label}</span></button>`;
+    const dl = `<a class="btn" href="/api/documents/${doc.id}/download" title="Télécharger">${IC.download}<span>Télécharger</span></a>`;
+    const edit = btn(`data-act="edit" data-id="${doc.id}"`, IC.edit, "Modifier");
+    const view = btn(`data-act="preview" data-id="${doc.id}"`, IC.eye, "Aperçu");
     let actions;
     if (state.trash) {
-      actions = `<button data-act="restore" data-id="${doc.id}">${IC.restore}Restaurer</button>
-        <button data-act="purge" data-id="${doc.id}" class="danger">${IC.trash}Supprimer</button>`;
+      actions = btn(`data-act="restore" data-id="${doc.id}"`, IC.restore, "Restaurer") +
+        `<button data-act="purge" data-id="${doc.id}" class="danger" title="Supprimer">${IC.trash}<span>Supprimer</span></button>`;
     } else if (doc.ocr_status === "failed") {
-      actions = `<button data-act="retry" data-id="${doc.id}">${IC.retry}Réessayer</button>${dl}${edit}`;
+      actions = btn(`data-act="retry" data-id="${doc.id}"`, IC.retry, "Réessayer") + dl + edit;
     } else {
-      actions = `${view}${dl}${edit}`;
+      actions = view + dl + edit;
     }
 
     const [plabel, pcls] = PROG[doc.progress] || PROG.done;

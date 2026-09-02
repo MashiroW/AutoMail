@@ -201,6 +201,8 @@ courrier apparaît, cherchable.
   direct, puis **« Redémarrer les services »** (sans privilège, relance via
   systemd), et invitation à recharger (Ctrl + Maj + R).
 - Bouton 🌙 / ☀️ : thème clair / sombre (mémorisé).
+- **Direction visuelle** commutable (sélecteur en en-tête) : *Nuit* (sombre,
+  minimal), *Papier* (clair, éditorial), *Corporate* (structuré, clair/sombre).
 - **Tableau de bord** (onglet en-tête) : indicateurs clés, volume de courriers
   par mois, répartition par avancement et par état OCR.
 - Interface soignée : icônes SVG, écrans de chargement (skeletons), micro-
