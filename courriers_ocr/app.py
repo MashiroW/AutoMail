@@ -21,14 +21,13 @@ from .models import (
     ReocrRequest,
     SearchResponse,
     StatsOut,
-    TagOut,
 )
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def _row_to_out(cfg: Config, row: dict) -> DocumentOut:
+def _row_to_out(row: dict) -> DocumentOut:
     return DocumentOut(
         id=row["id"],
         original_filename=row["original_filename"],
@@ -42,7 +41,7 @@ def _row_to_out(cfg: Config, row: dict) -> DocumentOut:
         ocr_status=row["ocr_status"],
         ocr_language=row.get("ocr_language"),
         lang_guess=row.get("lang_guess"),
-        tags=row.get("tags", []),
+        ocr_attempts=row.get("ocr_attempts") or 0,
         snippet=row.get("snippet") or None,
         has_thumbnail=bool(row.get("thumbnail_path")),
         notes=row.get("notes"),
@@ -56,7 +55,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     db.init_db(_conn)
     _conn.close()
 
-    app = FastAPI(title="Banque de courriers OCR", version="1.0.0")
+    app = FastAPI(title="AutoMail — banque de courriers OCR", version="1.0.0")
     app.state.cfg = cfg
 
     app.add_middleware(
@@ -93,13 +92,17 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def get_stats(conn=Depends(get_conn)):
         s = db.stats(conn)
         usage = shutil.disk_usage(cfg.data_dir)
+        pending = 0
+        if cfg.inbox.is_dir():
+            pending = sum(
+                1 for p in cfg.inbox.iterdir()
+                if p.is_file() and p.suffix.lower() == ".pdf"
+                and not p.name.startswith(".")
+            )
         return StatsOut(
-            **s, disk_free_bytes=usage.free, disk_total_bytes=usage.total
+            **s, pending=pending,
+            disk_free_bytes=usage.free, disk_total_bytes=usage.total,
         )
-
-    @app.get("/api/tags", response_model=list[TagOut], dependencies=[Depends(auth)])
-    def get_tags(conn=Depends(get_conn)):
-        return [TagOut(**t) for t in db.list_tags(conn)]
 
     @app.get("/api/documents", response_model=SearchResponse,
              dependencies=[Depends(auth)])
@@ -109,7 +112,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         date_from: str | None = Query(None, alias="date_from"),
         date_to: str | None = Query(None, alias="date_to"),
         correspondent: str | None = None,
-        tag: str | None = None,
         status: str | None = Query(None, pattern="^(ok|failed|all)?$"),
         sort: str = Query("date", pattern="^(date|added|pertinence)$"),
         page: int = 1,
@@ -120,12 +122,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 raise HTTPException(422, f"{label} doit être au format YYYY-MM-DD")
         rows, total = db.search_documents(
             conn, q=q, date_from=date_from, date_to=date_to,
-            correspondent=correspondent, tag=tag,
+            correspondent=correspondent,
             status=None if status in (None, "all") else status,
             sort=sort, page=page, page_size=page_size,
         )
         return SearchResponse(
-            items=[_row_to_out(cfg, r) for r in rows],
+            items=[_row_to_out(r) for r in rows],
             total=total, page=max(1, page), page_size=page_size,
         )
 
@@ -135,7 +137,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         row = db.get_document(conn, doc_id)
         if not row:
             raise HTTPException(404, "courrier introuvable")
-        return _row_to_out(cfg, row)
+        return _row_to_out(row)
 
     @app.get("/api/documents/{doc_id}/text", dependencies=[Depends(auth)])
     def get_text(doc_id: int, conn=Depends(get_conn)):
@@ -181,14 +183,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         if fields:
             db.update_document(conn, doc_id, **fields)
-        if patch.tags is not None:
-            db.set_tags(conn, doc_id, patch.tags)
 
         fresh = db.get_document(conn, doc_id)
         p = abspath(cfg, fresh["text_path"]) if fresh["text_path"] else None
         text = p.read_text(encoding="utf-8", errors="replace") if p and p.is_file() else ""
         db.set_fts(conn, doc_id, text, fresh["title"], fresh["correspondent"])
-        return _row_to_out(cfg, fresh)
+        return _row_to_out(fresh)
 
     @app.post("/api/documents/{doc_id}/reocr", dependencies=[Depends(auth)])
     def reocr(doc_id: int, body: ReocrRequest, conn=Depends(get_conn)):
@@ -206,15 +206,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         row = db.get_document(conn, doc_id, include_deleted=True)
         if not row or row["ocr_status"] != "failed":
             raise HTTPException(404, "aucun courrier en échec avec cet id")
-        if not row["original_path"]:
-            raise HTTPException(409, "fichier d'origine introuvable")
-        src = abspath(cfg, row["original_path"])
-        if not src.is_file():
-            raise HTTPException(409, "fichier d'origine introuvable sur le disque")
-        dest = cfg.inbox / f"retry_{doc_id}_{safe_name(row['original_filename'])}"
-        shutil.move(str(src), str(dest))
-        db.soft_delete(conn, doc_id)  # l'ancienne ligne en échec sort des résultats
-        return {"status": "renvoyé dans l'inbox"}
+        # remet le compteur à zéro : le worker le retentera au prochain passage
+        db.update_document(conn, doc_id, ocr_attempts=0, last_attempt_at=None)
+        return {"status": "sera retenté"}
 
     @app.delete("/api/documents/{doc_id}", dependencies=[Depends(auth)])
     def delete_one(doc_id: int, conn=Depends(get_conn)):

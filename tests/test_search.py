@@ -1,7 +1,7 @@
 from courriers_ocr import db
 
 
-def _add(conn, *, text, title, correspondent=None, document_date=None, tags=()):
+def _add(conn, *, text, title, correspondent=None, document_date=None):
     doc_id = db.insert_document(
         conn,
         original_filename=title + ".pdf",
@@ -12,8 +12,6 @@ def _add(conn, *, text, title, correspondent=None, document_date=None, tags=()):
         ocr_status="ok",
     )
     db.set_fts(conn, doc_id, text, title, correspondent)
-    if tags:
-        db.set_tags(conn, doc_id, tags)
     return doc_id
 
 
@@ -51,15 +49,18 @@ def test_filtre_par_plage_de_dates(conn):
     assert total == 1 and items[0]["title"] == "Juin"
 
 
-def test_filtre_par_tag_et_correspondant(conn):
-    _add(conn, text="x", title="Impots", correspondent="DGFiP", tags=["fiscal", "2024"])
-    _add(conn, text="y", title="Banque", correspondent="Crédit Agricole", tags=["banque"])
-
-    items, total = db.search_documents(conn, tag="fiscal")
-    assert total == 1 and items[0]["title"] == "Impots"
+def test_filtre_par_correspondant(conn):
+    _add(conn, text="x", title="Impots", correspondent="DGFiP")
+    _add(conn, text="y", title="Banque", correspondent="Crédit Agricole")
 
     items, total = db.search_documents(conn, correspondent="agricole")
     assert total == 1 and items[0]["title"] == "Banque"
+
+
+def test_recherche_fts_sur_correspondant(conn):
+    _add(conn, text="décompte de soins", title="Mut", correspondent="Harmonie Mutuelle")
+    items, total = db.search_documents(conn, q="harmonie")
+    assert total == 1 and items[0]["title"] == "Mut"
 
 
 def test_tri_par_date_desc_par_defaut(conn):

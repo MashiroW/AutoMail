@@ -3,23 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Banque de courriers</title>
+  <title>AutoMail — banque de courriers</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📬</text></svg>">
 </head>
 <body>
   <header>
-    <h1>📬 Banque de courriers</h1>
-    <div id="stats" class="stats"></div>
+    <h1>📬 AutoMail</h1>
+    <div class="head-right">
+      <div id="stats" class="stats"></div>
+      <button id="theme" type="button" title="Thème clair / sombre" aria-label="Basculer le thème">🌙</button>
+    </div>
   </header>
 
   <form id="search" class="search">
-    <input type="search" id="q" name="q" placeholder="Mots présents dans le courrier…" autocomplete="off">
+    <input type="search" id="q" placeholder="Mots présents dans le courrier…" autocomplete="off">
     <label>du <input type="date" id="date_from"></label>
     <label>au <input type="date" id="date_to"></label>
     <input type="text" id="correspondent" placeholder="Correspondant" autocomplete="off">
-    <input type="text" id="tag" list="taglist" placeholder="Tag" autocomplete="off">
-    <datalist id="taglist"></datalist>
     <select id="status">
       <option value="all">Tous</option>
       <option value="ok" selected>Traités</option>
@@ -42,7 +43,6 @@
     <button id="next" type="button">Suivant ›</button>
   </nav>
 
-  <!-- Modale d'aperçu PDF -->
   <dialog id="preview">
     <div class="modal-head">
       <strong id="preview-title">Aperçu</strong>
@@ -54,22 +54,25 @@
     <iframe id="preview-frame" title="Aperçu du courrier"></iframe>
   </dialog>
 
-  <!-- Modale d'édition -->
   <dialog id="editor">
     <form method="dialog" id="editform">
       <h2>Modifier le courrier</h2>
+
+      <dl id="e-info" class="info"></dl>
+
       <label>Titre <input type="text" id="e-title"></label>
-      <label>Correspondant <input type="text" id="e-correspondent"></label>
+      <label>Correspondant <input type="text" id="e-correspondent" placeholder="ex. EDF, Impôts, Ma banque…"></label>
       <label>Date du courrier <input type="date" id="e-date"></label>
-      <label>Tags (séparés par des virgules) <input type="text" id="e-tags"></label>
-      <label>Notes <textarea id="e-notes" rows="3"></textarea></label>
+      <label>Notes <textarea id="e-notes" rows="2"></textarea></label>
+
       <div class="reocr">
-        <span>Relancer l'OCR :</span>
+        <span>Relancer l'OCR&nbsp;:</span>
         <button type="button" data-lang="fra">Français</button>
         <button type="button" data-lang="deu">Allemand</button>
         <button type="button" data-lang="ara">Arabe</button>
         <button type="button" data-lang="fra+deu">FR + DE</button>
       </div>
+
       <div class="modal-actions">
         <button type="button" id="e-delete" class="danger">Supprimer</button>
         <span class="spacer"></span>

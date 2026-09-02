@@ -18,7 +18,7 @@ class DocumentOut(BaseModel):
     ocr_status: str
     ocr_language: str | None = None
     lang_guess: str | None = None
-    tags: list[str] = []
+    ocr_attempts: int = 0
     snippet: str | None = None
     has_thumbnail: bool = False
     notes: str | None = None
@@ -38,7 +38,6 @@ class DocumentPatch(BaseModel):
         default=None, description="'YYYY-MM-DD' ou chaîne vide pour effacer"
     )
     notes: str | None = None
-    tags: list[str] | None = None
 
 
 class ReocrRequest(BaseModel):
@@ -49,11 +48,8 @@ class StatsOut(BaseModel):
     total: int
     failed: int
     trashed: int
+    reprocessing: int = 0
+    pending: int = 0
     last_added: str | None = None
     disk_free_bytes: int
     disk_total_bytes: int
-
-
-class TagOut(BaseModel):
-    name: str
-    count: int

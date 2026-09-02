@@ -17,6 +17,14 @@ TODAY = date(2026, 9, 1)
         ("15. Januar 2023\nBetreff: Vertrag", "2023-01-15"),
         ("Lyon, le 5 juin 2024", "2024-06-05"),
         ("EDF\n\n01/02/2026\nBonjour,", "2026-02-01"),
+        # abréviations et variantes
+        ("Fait à Lille le 1er sept. 2023", "2023-09-01"),
+        ("Le 4 déc 2024,\nMadame,", "2024-12-04"),
+        ("Toulouse, le 09.06.2025", "2025-06-09"),
+        ("Date : 7 avril 24", "2024-04-07"),
+        # bruit OCR : lettres à la place de chiffres
+        ("Paris, le l2/o3/2o24", "2024-03-12"),
+        ("Berlin, den 3. Marz 2024", "2024-03-03"),
     ],
 )
 def test_extraction_ok(text, expected):
@@ -24,24 +32,22 @@ def test_extraction_ok(text, expected):
 
 
 def test_pas_de_date():
-    assert extract_document_date("Bonjour,\nCeci est un courrier sans date.", TODAY) is None
+    assert extract_document_date("Bonjour,\nun courrier sans aucune date ici.", TODAY) is None
 
 
 def test_annee_hors_plage():
-    # 1990 est trop ancien -> ignoré
     assert extract_document_date("Courrier du 01/01/1990", TODAY) is None
-    # date trop loin dans le futur -> ignorée
     assert extract_document_date("Le 01/01/2099", TODAY) is None
 
 
-def test_seulement_l_entete():
-    corps = "\n".join(f"ligne de contenu numero {i}" for i in range(20))
+def test_repli_sur_le_corps_si_entete_sans_date():
+    # si l'en-tête n'a pas de date, on cherche dans tout le texte
+    corps = "\n".join(f"ligne de contenu numero {i}" for i in range(50))
     text = "En-tete sans date\n" + corps + "\nSigné le 04/05/2024"
-    assert extract_document_date(text, TODAY) is None
+    assert extract_document_date(text, TODAY) == "2024-05-04"
 
 
 def test_date_la_plus_haute_gagne():
-    # la date en tête l'emporte sur une « date limite » plus bas dans le courrier
     text = (
         "Direction generale des Finances publiques\n"
         "Le 05/09/2023\n"

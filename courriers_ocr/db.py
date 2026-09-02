@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -27,23 +27,14 @@ CREATE TABLE IF NOT EXISTS documents (
     ocr_status           TEXT NOT NULL,      -- 'ok' | 'skipped-has-text' | 'failed'
     ocr_language         TEXT,
     lang_guess           TEXT,
+    ocr_attempts         INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at      TEXT,
     deleted_at           TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_documents_date    ON documents(document_date);
-CREATE INDEX IF NOT EXISTS idx_documents_added   ON documents(added_at);
-CREATE INDEX IF NOT EXISTS idx_documents_status  ON documents(ocr_status);
-
-CREATE TABLE IF NOT EXISTS tags (
-    id   INTEGER PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS document_tags (
-    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    tag_id      INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (document_id, tag_id)
-);
+CREATE INDEX IF NOT EXISTS idx_documents_date   ON documents(document_date);
+CREATE INDEX IF NOT EXISTS idx_documents_added  ON documents(added_at);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(ocr_status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
     text,
@@ -58,7 +49,14 @@ CREATE TABLE IF NOT EXISTS reocr_jobs (
     language     TEXT NOT NULL,
     requested_at TEXT NOT NULL
 );
+
+-- l'ancienne fonctionnalité « tags » a été retirée
+DROP TABLE IF EXISTS document_tags;
+DROP TABLE IF EXISTS tags;
 """
+
+# retry automatique : nombre max de tentatives d'OCR par courrier
+MAX_OCR_ATTEMPTS = 3
 
 
 def now_iso() -> str:
@@ -83,6 +81,14 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    # migrations légères pour les bases créées avant l'ajout de colonnes
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(documents)")}
+    if "ocr_attempts" not in cols:
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN ocr_attempts INTEGER NOT NULL DEFAULT 0"
+        )
+    if "last_attempt_at" not in cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN last_attempt_at TEXT")
 
 
 # --------------------------------------------------------------------------- #
@@ -92,7 +98,7 @@ _DOC_COLUMNS = {
     "sha256", "original_filename", "original_path", "ocr_path", "thumbnail_path",
     "text_path", "page_count", "bytes", "added_at", "document_date",
     "document_date_source", "correspondent", "title", "notes", "ocr_status",
-    "ocr_language", "lang_guess", "deleted_at",
+    "ocr_language", "lang_guess", "ocr_attempts", "last_attempt_at", "deleted_at",
 }
 
 
@@ -128,7 +134,7 @@ def delete_fts(conn: sqlite3.Connection, doc_id: int) -> None:
 
 
 def sha_exists(conn: sqlite3.Connection, sha256: str) -> int | None:
-    """Id d'un document ACTIF ayant ce hash (les corbeille / réessais ne bloquent pas)."""
+    """Id d'un document ACTIF ayant ce hash (corbeille / réessais ne bloquent pas)."""
     row = conn.execute(
         "SELECT id FROM documents WHERE sha256 = ? AND deleted_at IS NULL",
         (sha256,),
@@ -137,10 +143,10 @@ def sha_exists(conn: sqlite3.Connection, sha256: str) -> int | None:
 
 
 def purge_deleted_by_sha(conn: sqlite3.Connection, sha256: str) -> None:
-    """Supprime définitivement les enregistrements en corbeille / échec du même hash.
+    """Supprime définitivement les enregistrements en corbeille du même hash.
 
     Sans ça, la contrainte UNIQUE(sha256) empêcherait de ré-ingérer un courrier
-    précédemment supprimé ou renvoyé via « Réessayer ».
+    précédemment supprimé.
     """
     rows = conn.execute(
         "SELECT id FROM documents WHERE sha256 = ? AND deleted_at IS NOT NULL",
@@ -149,55 +155,6 @@ def purge_deleted_by_sha(conn: sqlite3.Connection, sha256: str) -> None:
     for r in rows:
         delete_fts(conn, r["id"])
         conn.execute("DELETE FROM documents WHERE id = ?", (r["id"],))
-
-
-# --------------------------------------------------------------------------- #
-#  Tags                                                                       #
-# --------------------------------------------------------------------------- #
-def set_tags(conn: sqlite3.Connection, doc_id: int, tags: Iterable[str]) -> None:
-    clean = []
-    seen = set()
-    for t in tags:
-        t = (t or "").strip()
-        key = t.lower()
-        if t and key not in seen:
-            seen.add(key)
-            clean.append(t)
-    conn.execute("DELETE FROM document_tags WHERE document_id = ?", (doc_id,))
-    for name in clean:
-        conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
-        tag_id = conn.execute(
-            "SELECT id FROM tags WHERE name = ?", (name,)
-        ).fetchone()["id"]
-        conn.execute(
-            "INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?, ?)",
-            (doc_id, tag_id),
-        )
-    # ménage des tags orphelins
-    conn.execute(
-        "DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM document_tags)"
-    )
-
-
-def tags_for(conn: sqlite3.Connection, doc_id: int) -> list[str]:
-    rows = conn.execute(
-        "SELECT t.name FROM tags t "
-        "JOIN document_tags dt ON dt.tag_id = t.id "
-        "WHERE dt.document_id = ? ORDER BY t.name",
-        (doc_id,),
-    ).fetchall()
-    return [r["name"] for r in rows]
-
-
-def list_tags(conn: sqlite3.Connection) -> list[dict]:
-    rows = conn.execute(
-        "SELECT t.name AS name, COUNT(*) AS count "
-        "FROM tags t "
-        "JOIN document_tags dt ON dt.tag_id = t.id "
-        "JOIN documents d ON d.id = dt.document_id AND d.deleted_at IS NULL "
-        "GROUP BY t.name ORDER BY count DESC, name"
-    ).fetchall()
-    return [dict(r) for r in rows]
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +177,6 @@ def search_documents(
     date_from: str | None = None,
     date_to: str | None = None,
     correspondent: str | None = None,
-    tag: str | None = None,
     status: str | None = None,
     sort: str = "date",
     page: int = 1,
@@ -253,12 +209,6 @@ def search_documents(
     if correspondent:
         where.append("d.correspondent LIKE ?")
         params.append(f"%{correspondent}%")
-    if tag:
-        where.append(
-            "EXISTS (SELECT 1 FROM document_tags dt JOIN tags t ON t.id = dt.tag_id "
-            "WHERE dt.document_id = d.id AND t.name = ?)"
-        )
-        params.append(tag)
     if status == "ok":
         where.append("d.ocr_status IN ('ok', 'skipped-has-text')")
     elif status == "failed":
@@ -285,13 +235,7 @@ def search_documents(
         """,
         params + [page_size, (page - 1) * page_size],
     ).fetchall()
-
-    result = []
-    for r in rows:
-        d = dict(r)
-        d["tags"] = tags_for(conn, d["id"])
-        result.append(d)
-    return result, int(total)
+    return [dict(r) for r in rows], int(total)
 
 
 def get_document(conn: sqlite3.Connection, doc_id: int,
@@ -302,7 +246,6 @@ def get_document(conn: sqlite3.Connection, doc_id: int,
     d = dict(row)
     if d["deleted_at"] and not include_deleted:
         return None
-    d["tags"] = tags_for(conn, doc_id)
     return d
 
 
@@ -311,6 +254,21 @@ def soft_delete(conn: sqlite3.Connection, doc_id: int) -> None:
         "UPDATE documents SET deleted_at = ? WHERE id = ?", (now_iso(), doc_id)
     )
     delete_fts(conn, doc_id)
+
+
+def retryable_failures(conn: sqlite3.Connection, older_than_iso: str) -> list[dict]:
+    """Courriers en échec à retenter (moins de MAX_OCR_ATTEMPTS, pas trop récents)."""
+    rows = conn.execute(
+        """
+        SELECT * FROM documents
+        WHERE ocr_status = 'failed' AND deleted_at IS NULL
+          AND ocr_attempts < ?
+          AND (last_attempt_at IS NULL OR last_attempt_at < ?)
+        ORDER BY id
+        """,
+        (MAX_OCR_ATTEMPTS, older_than_iso),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def stats(conn: sqlite3.Connection) -> dict:
@@ -326,11 +284,13 @@ def stats(conn: sqlite3.Connection) -> dict:
         FROM documents
         """
     ).fetchone()
+    reocr = conn.execute("SELECT COUNT(*) AS n FROM reocr_jobs").fetchone()["n"]
     return {
         "total": row["total"] or 0,
         "failed": row["failed"] or 0,
         "trashed": row["trashed"] or 0,
         "last_added": row["last_added"],
+        "reprocessing": reocr,
     }
 
 
