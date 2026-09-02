@@ -203,15 +203,17 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def get_stats(conn=Depends(get_conn)):
         s = db.stats(conn)
         usage = shutil.disk_usage(cfg.data_dir)
-        pending = 0
+        # "en attente" = déjà enregistrés (status pending) + fichiers pas encore vus
+        inbox_unseen = 0
         if cfg.inbox.is_dir():
-            pending = sum(
+            inbox_unseen = sum(
                 1 for p in cfg.inbox.iterdir()
                 if p.is_file() and p.suffix.lower() == ".pdf"
                 and not p.name.startswith(".")
             )
+        s["pending"] = s.get("pending", 0) + inbox_unseen
         return StatsOut(
-            **s, pending=pending, cpu_temp_c=_cpu_temp_c(),
+            **s, cpu_temp_c=_cpu_temp_c(),
             disk_free_bytes=usage.free, disk_total_bytes=usage.total,
         )
 
@@ -223,7 +225,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         date_from: str | None = Query(None, alias="date_from"),
         date_to: str | None = Query(None, alias="date_to"),
         correspondent: str | None = None,
-        status: str | None = Query(None, pattern="^(ok|failed|all|trash)?$"),
+        status: str | None = Query(None, pattern="^(ok|failed|pending|all|trash)?$"),
         progress: str | None = Query(None, pattern="^(todo|ongoing|done)?$"),
         sort: str = Query("date", pattern="^(date|added|pertinence)$"),
         page: int = 1,
@@ -451,7 +453,9 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/documents/{doc_id}/pdf", dependencies=[Depends(auth)])
     def view_ocr_pdf(doc_id: int, conn=Depends(get_conn)):
         row = db.get_document(conn, doc_id, include_deleted=True)
-        p = _file_or_404(row, "ocr_path")
+        # pas encore OCRisé -> on sert l'original pour l'aperçu
+        key = "ocr_path" if (row and row["ocr_path"]) else "original_path"
+        p = _file_or_404(row, key)
         return FileResponse(
             p, media_type="application/pdf",
             headers={"Content-Disposition": f'inline; filename="{doc_id}.pdf"'},

@@ -103,6 +103,17 @@ button.on, .icon.on { background: var(--accent-soft); border-color: var(--accent
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-soft); color: var(--accent); }
 
+/* filtre d'avancement = pastilles colorées (≠ menu OCR gris) */
+.progseg { display: inline-flex; gap: .3rem; }
+.progseg button {
+  font-size: .78rem; padding: .32rem .6rem; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+}
+.progseg button.p-todo.on    { background: color-mix(in srgb, var(--prog-todo) 18%, transparent); color: var(--prog-todo); border-color: var(--prog-todo); }
+.progseg button.p-ongoing.on { background: color-mix(in srgb, var(--prog-ongoing) 20%, transparent); color: var(--prog-ongoing); border-color: var(--prog-ongoing); }
+.progseg button.p-done.on    { background: color-mix(in srgb, var(--prog-done) 18%, transparent); color: var(--prog-done); border-color: var(--prog-done); }
+.progseg button[data-pf=""].on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
 /* ---------- toolbar ---------- */
 .toolbar {
   position: sticky; top: 51px; z-index: 15;
@@ -159,6 +170,7 @@ main.view-tiles { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); 
 .badge { font-size: .7rem; padding: .08rem .45rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .badge.fail { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
 .badge.lang { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.badge.busy { background: var(--accent-soft); color: var(--accent); }
 .actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .55rem; }
 .actions button, .actions .btn { font-size: .8rem; padding: .32rem .55rem; text-decoration: none; }
 

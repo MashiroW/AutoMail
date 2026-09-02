@@ -10,6 +10,7 @@ const state = {
   page: 1,
   pageSize: Number(LS.get("pageSize", 50)) || 50,
   view: LS.get("view", "detail"),
+  progFilter: "",
   trash: false,
   selectMode: false,
   selected: new Set(),
@@ -18,7 +19,7 @@ const state = {
 };
 
 const LANGS = { fra: "français", deu: "allemand", ara: "arabe", eng: "anglais", fr: "français", de: "allemand", en: "anglais" };
-const OCRSTATUS = { ok: "OK", "skipped-has-text": "texte conservé", failed: "échec" };
+const OCRSTATUS = { pending: "en attente", ok: "OK", "skipped-has-text": "texte conservé", failed: "échec" };
 const PROG = {
   todo: ["À faire", "prog-todo"],
   ongoing: ["En cours", "prog-ongoing"],
@@ -88,7 +89,7 @@ function currentQuery() {
     p.set("status", "trash");
   } else {
     p.set("status", $("#ocrstatus").value);
-    if ($("#progress").value) p.set("progress", $("#progress").value);
+    if (state.progFilter) p.set("progress", state.progFilter);
   }
   p.set("sort", $("#sort").value);
   p.set("page", state.page);
@@ -130,6 +131,8 @@ function render(items) {
       : `<div class="thumb"></div>`;
 
     const badges = [];
+    if (doc.ocr_status === "pending")
+      badges.push(`<span class="badge busy">OCR en cours…</span>`);
     if (doc.ocr_status === "failed")
       badges.push(`<span class="badge fail">échec OCR (${doc.ocr_attempts}×)</span>`);
     if (doc.lang_guess && doc.lang_guess !== "fr")
@@ -139,6 +142,10 @@ function render(items) {
     if (state.trash) {
       actions = `<button data-act="restore" data-id="${doc.id}">Restaurer</button>
         <button data-act="purge" data-id="${doc.id}" class="danger">Supprimer</button>`;
+    } else if (doc.ocr_status === "pending") {
+      actions = `<button data-act="preview" data-id="${doc.id}">Aperçu</button>
+        <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
+        <button data-act="edit" data-id="${doc.id}">Modifier</button>`;
     } else if (doc.ocr_status === "failed") {
       actions = `<button data-act="retry" data-id="${doc.id}">Réessayer</button>
         <a class="btn" href="/api/documents/${doc.id}/download">Télécharger</a>
@@ -424,7 +431,7 @@ function setTrash(on) {
   state.trash = on;
   $("#trash-toggle").classList.toggle("on", on);
   $("#ocrstatus").disabled = on;
-  $("#progress").disabled = on;
+  $("#progseg").querySelectorAll("button").forEach((b) => (b.disabled = on));
   $("#empty-trash")?.remove();
   if (on) {
     const b = document.createElement("button");
@@ -439,14 +446,22 @@ function setTrash(on) {
 }
 
 // --- événements ---------------------------------------------------------- //
+function setProgFilter(v) {
+  state.progFilter = v;
+  document.querySelectorAll("#progseg button").forEach((b) => b.classList.toggle("on", b.dataset.pf === v));
+}
+
 $("#go").addEventListener("click", () => { state.page = 1; search(); });
 $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") { state.page = 1; search(); } });
 $("#ocrstatus").addEventListener("change", () => { state.page = 1; search(); });
-$("#progress").addEventListener("change", () => { state.page = 1; search(); });
+$("#progseg").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-pf]"); if (!b) return;
+  setProgFilter(b.dataset.pf); state.page = 1; search();
+});
 $("#sort").addEventListener("change", () => { state.page = 1; search(); });
 $("#reset").addEventListener("click", () => {
   for (const id of ["q", "date_from", "date_to"]) $("#" + id).value = "";
-  $("#ocrstatus").value = "ok"; $("#progress").value = ""; $("#sort").value = "date";
+  $("#ocrstatus").value = "ok"; setProgFilter(""); $("#sort").value = "date";
   clearSelection(); state.page = 1; search();
 });
 $("#prev").addEventListener("click", () => { if (state.page > 1) { clearSelection(); state.page--; search(); } });

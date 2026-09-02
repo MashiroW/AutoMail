@@ -15,7 +15,13 @@ from .config import Config
 from . import db
 from .dates import extract_document_date
 from .extract import clean_text, extract_text_fallback, guess_language
-from .ingest import abspath, process_one_file, reprocess_failed_doc, rel
+from .ingest import (
+    abspath,
+    ocr_pending_doc,
+    register_file,
+    reprocess_failed_doc,
+    rel,
+)
 from .ocr import run_ocr
 
 log = logging.getLogger("courriers_ocr.worker")
@@ -39,6 +45,8 @@ def _is_candidate(p: Path) -> bool:
 
 
 def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]]) -> int:
+    """1) enregistre les fichiers stables (visibles tout de suite),
+       2) OCRise les documents en attente, un par un."""
     processed = 0
     current = (
         {p for p in cfg.inbox.iterdir() if _is_candidate(p)}
@@ -57,13 +65,15 @@ def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]]) ->
         prev = pending.get(path)
         stable = prev[2] + 1 if (prev and prev[0] == size and prev[1] == mtime) else 0
         pending[path] = (size, mtime, stable)
-
         if stable + 1 >= cfg.stable_checks:
             pending.pop(path, None)
-            process_one_file(conn, cfg, path)
-            processed += 1
-            if _stop:
-                break
+            register_file(conn, cfg, path)
+
+    for doc_id in db.pending_doc_ids(conn, limit=50):
+        ocr_pending_doc(conn, cfg, doc_id)
+        processed += 1
+        if _stop:
+            break
     return processed
 
 

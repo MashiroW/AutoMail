@@ -1,5 +1,5 @@
 from courriers_ocr import db
-from courriers_ocr.ingest import rel, reprocess_failed_doc
+from courriers_ocr.ingest import ocr_pending_doc, register_file, rel, reprocess_failed_doc
 
 LETTER = """Paris, le 14 février 2024
 
@@ -258,6 +258,33 @@ def test_bulk_progress_et_download(cfg, drop_letter, ingest, client):
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     zf = zipfile.ZipFile(io.BytesIO(r.content))
     assert len(zf.namelist()) == 3
+
+
+def test_courrier_visible_avant_ocr(cfg, conn, client):
+    pdf = cfg.inbox / "avantocr.pdf"
+    pdf.write_bytes(b"%PDF-1.4 en attente\n%%EOF")
+    (cfg.inbox / "avantocr.txt").write_text("Paris, le 4 mars 2024\ntexte", encoding="utf-8")
+
+    doc_id = register_file(conn, cfg, pdf)          # phase 1 seulement
+    assert doc_id is not None
+
+    d = client.get(f"/api/documents/{doc_id}").json()
+    assert d["ocr_status"] == "pending"
+
+    # visible dans "non traités" et "tous", pas dans "traités"
+    assert client.get("/api/documents", params={"status": "pending"}).json()["total"] == 1
+    assert client.get("/api/documents", params={"status": "all"}).json()["total"] == 1
+    assert client.get("/api/documents", params={"status": "ok"}).json()["total"] == 0
+
+    # déjà téléchargeable et prévisualisable (l'aperçu retombe sur l'original)
+    assert client.get(f"/api/documents/{doc_id}/download").status_code == 200
+    r = client.get(f"/api/documents/{doc_id}/pdf")
+    assert r.status_code == 200 and r.content == b"%PDF-1.4 en attente\n%%EOF"
+
+    # après l'OCR -> "traités"
+    ocr_pending_doc(conn, cfg, doc_id)
+    assert client.get(f"/api/documents/{doc_id}").json()["ocr_status"] == "ok"
+    assert client.get("/api/documents", params={"status": "pending"}).json()["total"] == 0
 
 
 def test_version(client):

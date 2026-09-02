@@ -21,17 +21,21 @@
     <input type="search" id="q" placeholder="Rechercher dans le texte des courriers…" autocomplete="off">
     <label class="fld">du <input type="date" id="date_from"></label>
     <label class="fld">au <input type="date" id="date_to"></label>
-    <select id="ocrstatus" title="Statut OCR">
-      <option value="all">Tous</option>
-      <option value="ok" selected>Traités</option>
-      <option value="failed">Échecs</option>
-    </select>
-    <select id="progress" title="Avancement">
-      <option value="">Avancement : tous</option>
-      <option value="todo">À faire</option>
-      <option value="ongoing">En cours</option>
-      <option value="done">Fait</option>
-    </select>
+    <label class="fld">OCR
+      <select id="ocrstatus" title="État de l'OCR">
+        <option value="all">tous</option>
+        <option value="ok" selected>traités</option>
+        <option value="pending">non traités</option>
+        <option value="failed">échecs</option>
+      </select>
+    </label>
+    <span class="fld">Suivi</span>
+    <div class="progseg" id="progseg" role="group" aria-label="Avancement">
+      <button type="button" data-pf="" class="on">Tous</button>
+      <button type="button" data-pf="todo" class="p-todo">À faire</button>
+      <button type="button" data-pf="ongoing" class="p-ongoing">En cours</button>
+      <button type="button" data-pf="done" class="p-done">Fait</button>
+    </div>
     <select id="sort" title="Tri">
       <option value="date">Date du courrier</option>
       <option value="added">Ajout récent</option>

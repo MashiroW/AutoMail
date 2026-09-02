@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS documents (
     correspondent        TEXT,
     title                TEXT,
     notes                TEXT,
-    ocr_status           TEXT NOT NULL,      -- 'ok' | 'skipped-has-text' | 'failed'
+    ocr_status           TEXT NOT NULL,      -- 'pending' | 'ok' | 'skipped-has-text' | 'failed'
     ocr_language         TEXT,
     lang_guess           TEXT,
     ocr_attempts         INTEGER NOT NULL DEFAULT 0,
@@ -223,6 +223,8 @@ def search_documents(
         where.append("d.ocr_status IN ('ok', 'skipped-has-text')")
     elif status == "failed":
         where.append("d.ocr_status = 'failed'")
+    elif status == "pending":
+        where.append("d.ocr_status = 'pending'")
     if progress in ("todo", "ongoing", "done"):
         where.append("d.progress = ?")
         params.append(progress)
@@ -279,6 +281,15 @@ def purge(conn: sqlite3.Connection, doc_id: int) -> None:
     conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
 
 
+def pending_doc_ids(conn: sqlite3.Connection, limit: int = 50) -> list[int]:
+    rows = conn.execute(
+        "SELECT id FROM documents WHERE ocr_status = 'pending' AND deleted_at IS NULL "
+        "ORDER BY id LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [r["id"] for r in rows]
+
+
 def trashed_ids(conn: sqlite3.Connection) -> list[int]:
     return [
         r["id"] for r in
@@ -306,11 +317,13 @@ def stats(conn: sqlite3.Connection) -> dict:
         """
         SELECT
             SUM(CASE WHEN deleted_at IS NULL AND ocr_status != 'failed'
-                     THEN 1 ELSE 0 END)                              AS total,
+                     THEN 1 ELSE 0 END)                                 AS total,
             SUM(CASE WHEN deleted_at IS NULL AND ocr_status = 'failed'
-                     THEN 1 ELSE 0 END)                              AS failed,
-            SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END)  AS trashed,
-            MAX(added_at)                                            AS last_added
+                     THEN 1 ELSE 0 END)                                 AS failed,
+            SUM(CASE WHEN deleted_at IS NULL AND ocr_status = 'pending'
+                     THEN 1 ELSE 0 END)                                 AS pending,
+            SUM(CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE 0 END)     AS trashed,
+            MAX(added_at)                                               AS last_added
         FROM documents
         """
     ).fetchone()
@@ -318,6 +331,7 @@ def stats(conn: sqlite3.Connection) -> dict:
     return {
         "total": row["total"] or 0,
         "failed": row["failed"] or 0,
+        "pending": row["pending"] or 0,
         "trashed": row["trashed"] or 0,
         "last_added": row["last_added"],
         "reprocessing": reocr,

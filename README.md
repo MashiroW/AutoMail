@@ -12,7 +12,8 @@ en plus léger et sans PC allumé en permanence :
 4. il **indexe** le texte pour la recherche plein-texte + avancement ;
 5. il expose sur le réseau local une **API REST + une page web** pour chercher
    (mots-clés, plage de dates, avancement) et **télécharger l'original** ;
-6. un courrier dont l'OCR échoue est **retenté automatiquement** (jusqu'à 3 fois).
+6. un courrier est **visible et téléchargeable dès sa réception**, avant même
+   la fin de l'OCR ; un échec d'OCR est **retenté automatiquement** (×3).
 
 Stack : Python + FastAPI + SQLite (FTS5). Deux services systemd, aucune base
 externe, aucune dépendance réseau à l'exécution.
@@ -175,8 +176,10 @@ courrier apparaît, cherchable.
 
 - **Recherche mots-clés** : sur tout le texte OCR, insensible aux accents et à la
   casse, par préfixe (`convoc` trouve « convocation »).
-- **Filtres** : date du courrier (du / au), statut OCR (traités / échecs),
-  **avancement** (à faire / en cours / fait), tri.
+- **Filtres** : date, **OCR** (menu gris : tous / traités / **non traités** /
+  échecs), **Suivi** (pastilles colorées : tous / à faire / en cours / fait),
+  tri. Les deux sont volontairement distincts — l'un concerne l'OCR, l'autre
+  l'action à mener sur le courrier.
 - **Avancement** : chaque courrier a une pastille de couleur — *à faire*,
   *en cours*, *fait* (défaut). Clic sur la pastille pour la faire tourner ;
   modifiable aussi dans la fiche *Modifier* et en groupe.
