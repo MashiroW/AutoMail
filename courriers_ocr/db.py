@@ -128,10 +128,27 @@ def delete_fts(conn: sqlite3.Connection, doc_id: int) -> None:
 
 
 def sha_exists(conn: sqlite3.Connection, sha256: str) -> int | None:
+    """Id d'un document ACTIF ayant ce hash (les corbeille / réessais ne bloquent pas)."""
     row = conn.execute(
-        "SELECT id FROM documents WHERE sha256 = ?", (sha256,)
+        "SELECT id FROM documents WHERE sha256 = ? AND deleted_at IS NULL",
+        (sha256,),
     ).fetchone()
     return int(row["id"]) if row else None
+
+
+def purge_deleted_by_sha(conn: sqlite3.Connection, sha256: str) -> None:
+    """Supprime définitivement les enregistrements en corbeille / échec du même hash.
+
+    Sans ça, la contrainte UNIQUE(sha256) empêcherait de ré-ingérer un courrier
+    précédemment supprimé ou renvoyé via « Réessayer ».
+    """
+    rows = conn.execute(
+        "SELECT id FROM documents WHERE sha256 = ? AND deleted_at IS NOT NULL",
+        (sha256,),
+    ).fetchall()
+    for r in rows:
+        delete_fts(conn, r["id"])
+        conn.execute("DELETE FROM documents WHERE id = ?", (r["id"],))
 
 
 # --------------------------------------------------------------------------- #

@@ -35,6 +35,7 @@ apt-get install -y --no-install-recommends \
   ocrmypdf \
   tesseract-ocr-fra tesseract-ocr-deu tesseract-ocr-ara \
   poppler-utils \
+  unpaper pngquant \
   ca-certificates curl rsync xz-utils
 
 # --------------------------------------------------------------------------- #

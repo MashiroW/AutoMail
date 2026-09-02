@@ -126,5 +126,19 @@ def test_retry_renvoie_dans_l_inbox(cfg, conn, client):
     assert client.get(f"/api/documents/{doc_id}").status_code == 404
 
 
+def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):
+    drop_letter("revient", LETTER)
+    ingest()
+    doc_id = client.get("/api/documents").json()["items"][0]["id"]
+    assert client.delete(f"/api/documents/{doc_id}").status_code == 200
+
+    # le même fichier redéposé doit être ré-indexé, pas rejeté comme doublon
+    drop_letter("revient", LETTER)
+    ingest()
+    listing = client.get("/api/documents", params={"q": "électricité"}).json()
+    assert listing["total"] == 1
+    assert listing["items"][0]["ocr_status"] == "ok"
+
+
 def test_reponse_web_racine(client):
     assert client.get("/").status_code == 200

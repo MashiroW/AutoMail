@@ -94,6 +94,10 @@ def process_one_file(conn: sqlite3.Connection, cfg: Config, src: Path) -> int | 
             log.info("doublon de #%s -> %s", existing, dest.name)
             return None
 
+        # un ancien enregistrement en corbeille / échec du même hash bloquerait
+        # l'insertion (UNIQUE sha256) : on le purge pour permettre la ré-ingestion
+        db.purge_deleted_by_sha(conn, sha)
+
         # --- OCR ------------------------------------------------------
         result = run_ocr(src, tmp_out, tmp_txt, cfg.ocr_languages, cfg)
 

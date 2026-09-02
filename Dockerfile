@@ -17,13 +17,15 @@ ENV PYTHONUNBUFFERED=1 \
 RUN printf 'Acquire::ForceIPv4 "true";\nAcquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
         > /etc/apt/apt.conf.d/99network
 
-# OCR + outils PDF. ocrmypdf tire tesseract, ghostscript, qpdf, unpaper, pngquant.
+# OCR + outils PDF. unpaper est requis par --clean, pngquant par --optimize.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ocrmypdf \
         tesseract-ocr-fra \
         tesseract-ocr-deu \
         tesseract-ocr-ara \
         poppler-utils \
+        unpaper \
+        pngquant \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
