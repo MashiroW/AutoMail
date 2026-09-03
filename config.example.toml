@@ -12,7 +12,8 @@ data_dir = "./data"
 # Langue(s) Tesseract pour le premier OCR. "fra", "fra+deu", "deu", "ara"…
 ocr_languages = "fra"
 
-# Fréquence de scan de l'inbox, en secondes.
+# Cadence de la boucle du worker au repos, en secondes (bornée à 3 s en interne :
+# l'inbox, elle, est surveillée en continu par un thread dédié ~toutes les 1 s).
 poll_interval_seconds = 10
 
 # Nombre de relevés (taille + date) identiques consécutifs avant de considérer

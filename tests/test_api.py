@@ -1,3 +1,6 @@
+import threading
+import time
+
 from courriers_ocr import db
 from courriers_ocr.ingest import ocr_pending_doc, register_file, rel, reprocess_failed_doc
 
@@ -230,6 +233,27 @@ def test_tout_le_lot_visible_en_attente(cfg, conn, drop_letter):
     more = worker.scan_once(conn, cfg, {}, max_ocr=0)   # enregistre, aucun OCR
     assert more is True
     assert len(db.pending_doc_ids(conn, limit=50)) == 6
+
+
+def test_watcher_enregistre_pendant_un_ocr(cfg, conn, drop_letter):
+    """Le thread watcher enregistre un dépôt même si le thread principal est
+    bloqué dans un OCR : le 2ᵉ courrier apparaît vite en « en attente »."""
+    from courriers_ocr import worker
+
+    stop_evt = threading.Event()
+    t = threading.Thread(target=worker._inbox_watcher, args=(cfg, stop_evt),
+                         daemon=True)
+    t.start()
+    try:
+        drop_letter("pendant-ocr", "x", pdf_bytes=b"%PDF-1.4 z\n%%EOF")
+        deadline = time.time() + 5
+        while time.time() < deadline and not db.pending_doc_ids(conn, limit=5):
+            time.sleep(0.2)
+    finally:
+        stop_evt.set()
+        t.join(timeout=3)
+
+    assert len(db.pending_doc_ids(conn, limit=5)) == 1
 
 
 def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):

@@ -122,10 +122,11 @@ tampons / manuscrit, et surtout `--force-ocr`. Un courrier de 10 pages peut
 donc légitimement prendre 5–10 min sur un Pi 4 — la carte affiche le chrono en
 direct pendant ce temps.
 
-Les courriers sont traités **un par un**, dans l'ordre d'arrivée. Le worker
-re-scanne l'inbox **entre chaque OCR** : un nouveau dépôt apparaît donc dans les
-compteurs (« en attente », total) en quelques secondes, même si une longue file
-est en cours de traitement.
+Les courriers sont traités **un par un**, dans l'ordre d'arrivée. Un **thread
+dédié surveille l'inbox en continu** (~1 s), indépendamment de l'OCR : un
+courrier déposé pendant qu'un autre est en cours de traitement apparaît donc
+tout de suite dans « en attente » (et dans le total), sans attendre la fin de
+l'OCR en cours.
 
 ## Installation
 

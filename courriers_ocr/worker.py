@@ -6,6 +6,7 @@ import argparse
 import logging
 import signal
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -73,20 +74,17 @@ def register_inbox(conn, cfg: Config,
     return registered
 
 
-# nb max d'OCR par passage de scan_once en mode continu, pour laisser
-# l'enregistrement de l'inbox reprendre la main souvent (mode --once = illimité)
+# nb max d'OCR enchaînés avant de rendre la main aux tâches périodiques
+# (ré-OCR demandé depuis l'UI, retry des échecs, drapeau de redémarrage)
 _OCR_BATCH = 4
 
 
 def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]],
               *, restart_flag: Path | None = None,
               max_ocr: int | None = None) -> bool:
-    """1) enregistre d'un coup TOUS les fichiers stables de l'inbox → ils
-       apparaissent aussitôt dans « en attente », même si l'OCR a du retard ;
-       2) OCRise au plus `max_ocr` courriers (None = jusqu'à épuisement), en
-       re-scannant l'inbox entre chaque.
-       Renvoie True s'il reste du travail (file d'OCR non vide ou fichiers encore
-       en cours de stabilisation) → la boucle repassera vite."""
+    """Passage SYNCHRONE (mode --once / tests) : enregistre l'inbox puis OCRise
+    au plus `max_ocr` courriers (None = tous), en re-scannant entre chaque.
+    En mode continu, c'est le thread `_inbox_watcher` qui enregistre l'inbox."""
     register_inbox(conn, cfg, pending)
     done = 0
     while max_ocr is None or done < max_ocr:
@@ -99,6 +97,45 @@ def scan_once(conn, cfg: Config, pending: dict[Path, tuple[int, float, int]],
         done += 1
         register_inbox(conn, cfg, pending)
     return bool(db.pending_doc_ids(conn, limit=1)) or bool(pending)
+
+
+def drain_ocr(conn, cfg: Config, *, restart_flag: Path | None = None,
+              max_ocr: int | None = None) -> bool:
+    """OCRise les courriers en attente, au plus `max_ocr` (None = tous).
+    N'enregistre PAS l'inbox (le thread watcher s'en charge en parallèle).
+    Renvoie True s'il reste des courriers en attente."""
+    done = 0
+    while max_ocr is None or done < max_ocr:
+        if _stop or (restart_flag is not None and restart_flag.exists()):
+            break
+        ids = db.pending_doc_ids(conn, limit=1)
+        if not ids:
+            break
+        ocr_pending_doc(conn, cfg, ids[0])
+        done += 1
+    return bool(db.pending_doc_ids(conn, limit=1))
+
+
+def _inbox_watcher(cfg: Config, stop_evt: threading.Event) -> None:
+    """Thread léger et permanent : enregistre les fichiers stables de l'inbox
+    ~toutes les secondes, avec sa PROPRE connexion SQLite. Tourne en parallèle
+    de l'OCR pour qu'un courrier déposé pendant l'OCR d'un autre apparaisse
+    tout de suite dans « en attente »."""
+    try:
+        conn = db.connect(cfg.db_path)
+    except Exception:  # noqa: BLE001
+        log.exception("watcher inbox : connexion DB impossible")
+        return
+    pending: dict[Path, tuple[int, float, int]] = {}
+    try:
+        while not _stop and not stop_evt.is_set():
+            try:
+                register_inbox(conn, cfg, pending)
+            except Exception:  # noqa: BLE001
+                log.exception("watcher inbox : échec d'enregistrement")
+            stop_evt.wait(1.0)
+    finally:
+        conn.close()
 
 
 def auto_retry_failed(conn, cfg: Config) -> int:
@@ -181,34 +218,63 @@ def run(cfg: Config, once: bool = False) -> None:
         log.info("%s OCR interrompus remis en file d'attente", stuck)
 
     log.info("worker démarré — inbox=%s langues=%s", cfg.inbox, cfg.ocr_languages)
-    pending: dict[Path, tuple[int, float, int]] = {}
     restart_flag = cfg.data_dir / ".restart-requested"
 
-    while not _stop:
-        if restart_flag.exists():   # posé par le bouton « Mettre à jour »
-            restart_flag.unlink(missing_ok=True)
-            log.info("redémarrage demandé — sortie (systemd relancera)")
-            break
-        backlog = False
+    # --- mode --once (tests / debug) : tout en synchrone, sans thread --------
+    if once:
         try:
             process_reocr(conn, cfg)
             auto_retry_failed(conn, cfg)
-            backlog = scan_once(conn, cfg, pending, restart_flag=restart_flag,
-                                max_ocr=None if once else _OCR_BATCH)
-        except Exception:  # noqa: BLE001 — la boucle ne doit jamais mourir
+            scan_once(conn, cfg, {}, max_ocr=None)
+        except Exception:  # noqa: BLE001
             log.exception("erreur inattendue dans la boucle du worker")
+        conn.close()
+        log.info("worker arrêté")
+        return
 
-        if once:
-            break
-        # backlog en cours : on repasse dans 1 s (l'inbox est ré-enregistrée à
-        # fond → « en attente » reflète tout de suite le nombre réel de courriers)
-        delay = 1.0 if backlog else max(1.0, cfg.poll_interval_seconds)
-        for _ in range(int(delay * 10)):
-            if _stop or restart_flag.exists():
+    # --- mode continu : un thread enregistre l'inbox en permanence, ce
+    #     thread-ci enchaîne les OCR -------------------------------------------
+    stop_evt = threading.Event()
+
+    def _spawn_watcher() -> threading.Thread:
+        t = threading.Thread(target=_inbox_watcher, args=(cfg, stop_evt),
+                             name="inbox-watcher", daemon=True)
+        t.start()
+        return t
+
+    watcher = _spawn_watcher()
+    try:
+        while not _stop:
+            if restart_flag.exists():   # posé par le bouton « Mettre à jour »
+                restart_flag.unlink(missing_ok=True)
+                log.info("redémarrage demandé — sortie (systemd relancera)")
                 break
-            time.sleep(0.1)
+            if not watcher.is_alive():
+                log.warning("watcher inbox arrêté — redémarrage")
+                watcher = _spawn_watcher()
 
-    conn.close()
+            backlog = False
+            try:
+                process_reocr(conn, cfg)
+                auto_retry_failed(conn, cfg)
+                backlog = drain_ocr(conn, cfg, restart_flag=restart_flag,
+                                    max_ocr=_OCR_BATCH)
+            except Exception:  # noqa: BLE001 — la boucle ne doit jamais mourir
+                log.exception("erreur inattendue dans la boucle du worker")
+
+            # l'inbox est surveillée par le thread watcher ; ici on ne fait que
+            # sonder la file d'OCR → un réveil court suffit (le courrier que le
+            # watcher vient d'enregistrer démarre en ≤ 3 s, pas au bout de
+            # poll_interval). 1 s tant qu'il reste du backlog.
+            delay = 1.0 if backlog else max(1.0, min(3.0, cfg.poll_interval_seconds))
+            for _ in range(int(delay * 10)):
+                if _stop or restart_flag.exists():
+                    break
+                time.sleep(0.1)
+    finally:
+        stop_evt.set()
+        watcher.join(timeout=3)
+        conn.close()
     log.info("worker arrêté")
 
 
