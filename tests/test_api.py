@@ -256,6 +256,31 @@ def test_watcher_enregistre_pendant_un_ocr(cfg, conn, drop_letter):
     assert len(db.pending_doc_ids(conn, limit=5)) == 1
 
 
+def test_register_file_rejette_non_pdf(cfg, conn):
+    """Un fichier qui n'est pas un PDF → échec avec un message parlant, pas la
+    sortie brute d'ocrmypdf."""
+    p = cfg.inbox / "faux.pdf"
+    p.write_bytes(b"ceci n'est pas un pdf")
+    doc_id = register_file(conn, cfg, p)
+    row = db.get_document(conn, doc_id, include_deleted=True)
+    assert row["ocr_status"] == "failed"
+    assert "pdf" in row["notes"].lower()
+    assert not p.exists()                       # déplacé hors de l'inbox
+
+
+def test_fichier_vide_finit_en_echec_clair(cfg, conn):
+    """Un dépôt vide (0 octet, transfert interrompu) : on patiente, puis échec
+    avec « fichier vide » — plus de « code 2 / cannot identify image »."""
+    from courriers_ocr import worker
+    (cfg.inbox / "vide.pdf").write_bytes(b"")
+    pending: dict = {}
+    for _ in range(cfg.stable_checks + worker._STALE_AFTER + 2):
+        worker.register_inbox(conn, cfg, pending)
+    row = conn.execute("SELECT ocr_status, notes FROM documents").fetchone()
+    assert row["ocr_status"] == "failed"
+    assert "vide" in (row["notes"] or "").lower()
+
+
 def test_reingestion_apres_suppression(cfg, drop_letter, ingest, client):
     drop_letter("revient", LETTER)
     ingest()

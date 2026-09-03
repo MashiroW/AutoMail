@@ -19,6 +19,7 @@ from .extract import clean_text, extract_text_fallback, guess_language
 from .ingest import (
     abspath,
     ocr_pending_doc,
+    pdf_sanity_error,
     register_file,
     reprocess_failed_doc,
     rel,
@@ -45,6 +46,12 @@ def _is_candidate(p: Path) -> bool:
     return p.suffix.lower() == ".pdf"
 
 
+# un fichier stable mais qui n'a pas l'air d'un PDF (vide, en-tête absente) :
+# on patiente encore ~ce nombre de relevés (le scanner écrit peut-être encore)
+# avant de le déclarer en échec pour de bon.
+_STALE_AFTER = 20
+
+
 def register_inbox(conn, cfg: Config,
                    pending: dict[Path, tuple[int, float, int]]) -> int:
     """Repère les PDF *stables* de l'inbox et les enregistre (phase 1, rapide,
@@ -67,10 +74,15 @@ def register_inbox(conn, cfg: Config,
         prev = pending.get(path)
         stable = prev[2] + 1 if (prev and prev[0] == size and prev[1] == mtime) else 0
         pending[path] = (size, mtime, stable)
-        if stable + 1 >= cfg.stable_checks:
-            pending.pop(path, None)
-            if register_file(conn, cfg, path) is not None:
-                registered += 1
+        if stable + 1 < cfg.stable_checks:
+            continue
+        # stable mais pas (encore) un PDF valide → on laisse du temps au scanner,
+        # puis on l'enregistre quand même (il finira en échec avec un message clair)
+        if pdf_sanity_error(path) and stable < cfg.stable_checks + _STALE_AFTER:
+            continue
+        pending.pop(path, None)
+        if register_file(conn, cfg, path) is not None:
+            registered += 1
     return registered
 
 

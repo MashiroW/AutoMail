@@ -190,10 +190,29 @@ def _place_ocr_outputs(conn, cfg: Config, doc_id: int, rel_original: str | None,
 # --------------------------------------------------------------------------- #
 #  Phase 1 : enregistrement immédiat (le courrier devient visible / dispo)    #
 # --------------------------------------------------------------------------- #
+def pdf_sanity_error(src: Path) -> str | None:
+    """Renvoie un message clair si le fichier n'est manifestement pas un PDF
+    exploitable (vide, en-tête absente…), sinon None. Évite un échec cryptique
+    d'ocrmypdf sur un dépôt interrompu / un fichier de travail du scanner."""
+    try:
+        if src.stat().st_size == 0:
+            return "fichier vide (0 octet) — dépôt interrompu ?"
+        with src.open("rb") as fh:
+            head = fh.read(1024)
+    except OSError as exc:
+        return f"fichier illisible ({exc})"
+    if b"%PDF-" not in head:
+        return "ce n'est pas un PDF (en-tête « %PDF- » absente)"
+    return None
+
+
 def register_file(conn: sqlite3.Connection, cfg: Config, src: Path) -> int | None:
     """Enregistre un fichier de l'inbox en statut 'pending'. Renvoie l'id (ou None)."""
     original_filename = src.name
     try:
+        bad = pdf_sanity_error(src)
+        if bad:
+            raise OcrError(bad)
         sha = sha256_file(src)
         existing = db.sha_exists(conn, sha)
         if existing is not None:
