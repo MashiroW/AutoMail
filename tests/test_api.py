@@ -268,6 +268,24 @@ def test_register_file_rejette_non_pdf(cfg, conn):
     assert not p.exists()                       # déplacé hors de l'inbox
 
 
+def test_parse_scan_datetime():
+    from courriers_ocr.ingest import parse_scan_datetime
+    assert parse_scan_datetime("03092026032337.pdf") == "2026-09-03T03:23:37"  # JJMMAAAA…
+    assert parse_scan_datetime("20260903032337.pdf") == "2026-09-03T03:23:37"  # AAAAMMJJ…
+    assert parse_scan_datetime("SCAN_2026-09-03_03-23-37.pdf") == "2026-09-03T03:23:37"
+    assert parse_scan_datetime("03092026.pdf") == "2026-09-03"
+    assert parse_scan_datetime("facture-edf.pdf") is None
+    assert parse_scan_datetime("IMG_0042.pdf") is None
+    assert parse_scan_datetime("12345678.pdf") is None       # ni AAAAMMJJ ni JJMMAAAA
+
+
+def test_scan_time_expose_par_l_api(cfg, drop_letter, ingest, client):
+    drop_letter("03092026032337", LETTER)
+    ingest()
+    d = client.get("/api/documents").json()["items"][0]
+    assert d["scan_time"] == "2026-09-03T03:23:37"
+
+
 def test_fichier_vide_finit_en_echec_clair(cfg, conn):
     """Un dépôt vide (0 octet, transfert interrompu) : on patiente, puis échec
     avec « fichier vide » — plus de « code 2 / cannot identify image »."""

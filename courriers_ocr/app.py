@@ -24,6 +24,7 @@ from . import db
 from .ingest import (
     abspath,
     move_to_trash,
+    parse_scan_datetime,
     purge_trash_dir,
     restore_from_trash,
 )
@@ -93,6 +94,7 @@ def _row_to_out(row: dict) -> DocumentOut:
         snippet=row.get("snippet") or None,
         has_thumbnail=bool(row.get("thumbnail_path")),
         notes=row.get("notes"),
+        scan_time=parse_scan_datetime(row["original_filename"]),
     )
 
 

@@ -190,6 +190,28 @@ def _place_ocr_outputs(conn, cfg: Config, doc_id: int, rel_original: str | None,
 # --------------------------------------------------------------------------- #
 #  Phase 1 : enregistrement immédiat (le courrier devient visible / dispo)    #
 # --------------------------------------------------------------------------- #
+def parse_scan_datetime(filename: str) -> str | None:
+    """Horodatage de numérisation extrait du nom de fichier du scanner.
+    ScanSnap & co nomment souvent « AAAAMMJJHHMMSS.pdf » ou « JJMMAAAAHHMMSS.pdf »
+    (séparateurs éventuels ignorés). Renvoie 'YYYY-MM-DDTHH:MM:SS',
+    'YYYY-MM-DD', ou None si le nom ne ressemble pas à un horodatage."""
+    digits = re.sub(r"\D", "", Path(filename).stem)
+    if len(digits) == 14:
+        trials = (("%Y%m%d%H%M%S", True), ("%d%m%Y%H%M%S", True))
+    elif len(digits) == 8:
+        trials = (("%Y%m%d", False), ("%d%m%Y", False))
+    else:
+        return None
+    for fmt, has_time in trials:
+        try:
+            dt = datetime.strptime(digits, fmt)
+        except ValueError:
+            continue
+        if 2000 <= dt.year <= 2100:
+            return dt.isoformat(timespec="seconds") if has_time else dt.date().isoformat()
+    return None
+
+
 def pdf_sanity_error(src: Path) -> str | None:
     """Renvoie un message clair si le fichier n'est manifestement pas un PDF
     exploitable (vide, en-tête absente…), sinon None. Évite un échec cryptique

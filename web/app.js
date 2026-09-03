@@ -22,6 +22,8 @@ const state = {
 
 const LANGS = { fra: "français", deu: "allemand", ara: "arabe", eng: "anglais", fr: "français", de: "allemand", en: "anglais" };
 const OCRSTATUS = { pending: "en attente", processing: "en cours", ok: "OK", "skipped-has-text": "texte conservé", failed: "échec" };
+// échec dû à un fichier vide / tronqué / pas un PDF → ce n'est pas l'OCR, il faut re-scanner
+const RESCAN_RE = /vide \(0 octet\)|n['’]est pas un pdf|pas un pdf|illisible/i;
 const PROG = {
   todo: ["À faire", "prog-todo"],
   ongoing: ["En cours", "prog-ongoing"],
@@ -103,6 +105,13 @@ function fmtDate(iso) {
   if (!iso) return "sans date";
   const [y, m, d] = iso.slice(0, 10).split("-");
   return `${d}/${m}/${y}`;
+}
+// « 03/09/2026 à 03:23 » à partir d'un ISO avec heure ; sans heure → juste la date
+function fmtDateTime(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  const t = iso.slice(11, 16);
+  return `${d}/${m}/${y}` + (t ? ` à ${t}` : "");
 }
 // durée lisible : « 45 s », « 3 min 20 s », « 1 h 4 min »
 function fmtDuration(sec) {
@@ -223,7 +232,10 @@ function render(items) {
         `<span class="badge busy" data-since="${doc.ocr_started_at || ""}" ` +
         `data-eta="${eta}" data-label="OCR en cours…">OCR en cours…</span>`);
     }
-    if (doc.ocr_status === "failed")
+    const rescan = doc.ocr_status === "failed" && RESCAN_RE.test(doc.notes || "");
+    if (rescan)
+      badges.push(`<span class="badge fail">fichier incomplet — à re-scanner</span>`);
+    else if (doc.ocr_status === "failed")
       badges.push(`<span class="badge fail">échec OCR (${doc.ocr_attempts}×)</span>`);
     if (doc.lang_guess && doc.lang_guess !== "fr")
       badges.push(`<span class="badge lang">langue&nbsp;? ${LANGS[doc.lang_guess] || doc.lang_guess}</span>`);
@@ -263,6 +275,7 @@ function render(items) {
           ${fmtDate(doc.document_date)}
           ${doc.page_count ? " · " + doc.page_count + " p." : ""}
           ${doc.bytes ? " · " + fmtBytes(doc.bytes) : ""}
+          ${doc.scan_time ? ` · <span title="date de numérisation (nom du fichier scanner)">num. ${esc(fmtDateTime(doc.scan_time))}</span>` : ""}
         </div>
         ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
         ${failReason}
@@ -413,6 +426,7 @@ async function openEditor(id) {
   $("#e-notes").value = d.notes || "";
   $("#e-info").innerHTML = `
     <dt>Fichier</dt><dd>${esc(d.original_filename)}</dd>
+    ${d.scan_time ? `<dt>Numérisé le</dt><dd>${esc(fmtDateTime(d.scan_time))}</dd>` : ""}
     <dt>Ajouté le</dt><dd>${fmtDate(d.added_at)}</dd>
     <dt>Pages</dt><dd>${d.page_count ?? "?"}</dd>
     <dt>Taille</dt><dd>${fmtBytes(d.bytes) || "?"}</dd>

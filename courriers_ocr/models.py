@@ -25,6 +25,7 @@ class DocumentOut(BaseModel):
     snippet: str | None = None
     has_thumbnail: bool = False
     notes: str | None = None
+    scan_time: str | None = None      # horodatage lu dans le nom de fichier du scanner
 
 
 class SearchResponse(BaseModel):

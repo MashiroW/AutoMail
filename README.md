@@ -214,6 +214,14 @@ courrier apparaît, cherchable.
 - Un **échec** d'OCR affiche sa **raison** sur la carte et dans la fiche ; le
   courrier reste ouvrable / téléchargeable. Le 2ᵉ essai automatique passe en
   `--force-ocr` (rasterisation, plus robuste).
+- Un dépôt **vide ou tronqué** (transfert interrompu, fichier de travail du
+  scanner) est signalé « **fichier incomplet — à re-scanner** » plutôt que
+  comme un échec d'OCR.
+- **Date de numérisation** : si le scanner nomme ses fichiers avec un horodatage
+  (`AAAAMMJJHHMMSS.pdf`, `JJMMAAAAHHMMSS.pdf`…), la carte et la fiche affichent
+  « numérisé le JJ/MM/AAAA à HH:MM ». Pratique pour retrouver *quel* courrier
+  papier correspond à un échec : trie par *date d'import* et repère-le entre ses
+  voisins.
 - **Temps de traitement** : pendant l'OCR, la carte affiche un chrono qui défile
   en direct (`OCR en cours… 1:12 · ~0:40 restant`, l'estimation venant de la
   moyenne s/page des 25 derniers courriers). Une fois fini, la fiche *Modifier*
