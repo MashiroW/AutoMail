@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>AutoMail — banque de courriers</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f6bff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='4' width='20' height='16' rx='3'/><path d='m3 6 9 7 9-7'/></svg>">
@@ -18,74 +18,111 @@
       <span class="word">AutoMail</span>
     </div>
     <nav class="mainnav">
-      <button type="button" data-nav="mail" class="on">Courriers</button>
-      <button type="button" data-nav="dash">Tableau de bord</button>
+      <button type="button" data-nav="mail" class="on" data-i18n="nav.mail">Courriers</button>
+      <button type="button" data-nav="dash" data-i18n="nav.dash">Tableau de bord</button>
     </nav>
     <div class="head-right">
       <div id="stats" class="stats"></div>
+      <div class="seg langseg" id="langseg" role="group" aria-label="Langue">
+        <button type="button" data-lang="fr">FR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
       <select id="skin" class="skinsel" title="Direction visuelle (essai)">
-        <option value="night">Nuit</option>
-        <option value="paper">Papier</option>
-        <option value="corporate">Corporate</option>
+        <option value="night" data-i18n="skin.night">Nuit</option>
+        <option value="paper" data-i18n="skin.paper">Papier</option>
+        <option value="corporate" data-i18n="skin.corporate">Corporate</option>
       </select>
-      <button id="update" type="button" class="pill" title="Mettre à jour depuis GitHub">
+      <button id="update" type="button" class="pill" data-i18n-title="head.update.tip" title="Mettre à jour depuis GitHub">
         <svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-        <span>Mise à jour</span>
+        <span data-i18n="head.update">Mise à jour</span>
       </button>
-      <button id="theme" type="button" class="icon" title="Thème clair / sombre" aria-label="Thème"></button>
+      <button id="theme" type="button" class="icon" data-i18n-title="head.theme" title="Thème clair / sombre" aria-label="Thème"></button>
     </div>
   </header>
 
   <!-- ================= COURRIERS ================= -->
   <section id="view-mail">
-    <div class="toolbar">
-      <div class="searchbox">
-        <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="search" id="q" placeholder="Rechercher dans le texte des courriers…" autocomplete="off">
-      </div>
-      <label class="fld">du <input type="date" id="date_from"></label>
-      <label class="fld">au <input type="date" id="date_to"></label>
-      <label class="fld">OCR
-        <select id="ocrstatus" title="État de l'OCR">
-          <option value="all">tous</option>
-          <option value="ok" selected>traités</option>
-          <option value="pending">en attente</option>
-          <option value="processing">en cours</option>
-          <option value="failed">échecs</option>
-        </select>
-      </label>
-      <span class="fld">Suivi</span>
-      <div class="progseg" id="progseg" role="group" aria-label="Avancement">
-        <button type="button" data-pf="" class="on">Tous</button>
-        <button type="button" data-pf="todo" class="p-todo">À faire</button>
-        <button type="button" data-pf="ongoing" class="p-ongoing">En cours</button>
-        <button type="button" data-pf="done" class="p-done">Fait</button>
-      </div>
-      <select id="sort" title="Tri">
-        <option value="date">Date du courrier (récent → ancien)</option>
-        <option value="date_asc">Date du courrier (ancien → récent)</option>
-        <option value="added">Date d'import (récent → ancien)</option>
-        <option value="added_asc">Date d'import (ancien → récent)</option>
-        <option value="pertinence">Pertinence</option>
-      </select>
-      <label class="fld chk" title="Uniquement les courriers dont l'OCR n'a pas trouvé de date">
-        <input type="checkbox" id="nodate"> sans date détectée
-      </label>
-      <button id="go" type="button" class="primary">Rechercher</button>
-      <button id="reset" type="button" class="ghost">Réinitialiser</button>
-
+    <div class="topbar">
+      <button id="filters-toggle" type="button" class="pill">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+        <span data-i18n="filters.toggle">Filtres</span>
+        <span id="filters-count" class="fcount" hidden></span>
+      </button>
       <span class="tb-spacer"></span>
-
-      <button id="trash-toggle" type="button" class="icon" title="Corbeille">
+      <button id="trash-toggle" type="button" class="icon" data-i18n-title="view.trash" title="Corbeille">
         <svg class="ic" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
       </button>
       <div class="seg" id="viewseg" role="group" aria-label="Affichage">
-        <button type="button" data-view="list" title="Liste"><svg class="ic" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
-        <button type="button" data-view="detail" class="on" title="Détail"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/></svg></button>
-        <button type="button" data-view="tiles" title="Tuiles"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+        <button type="button" data-view="list" data-i18n-title="view.list" title="Liste"><svg class="ic" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+        <button type="button" data-view="detail" class="on" data-i18n-title="view.detail" title="Détail"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/></svg></button>
+        <button type="button" data-view="tiles" data-i18n-title="view.tiles" title="Tuiles"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
       </div>
-      <button id="select-toggle" type="button" class="ghost">Sélectionner</button>
+      <button id="select-toggle" type="button" class="ghost" data-i18n="select.start">Sélectionner</button>
     </div>
+
+    <aside id="filters" class="drawer" aria-label="Filtres de recherche">
+      <div class="drawer-head">
+        <strong data-i18n="filters.title">Filtres</strong>
+        <button id="filters-close" type="button" class="icon" data-i18n-title="filters.close" title="Fermer">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div class="searchbox">
+          <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="q" data-i18n-ph="filters.search_ph" placeholder="Rechercher dans le texte…" autocomplete="off">
+        </div>
+
+        <div class="fgroup">
+          <span class="flabel" data-i18n="filters.dates">Date du courrier</span>
+          <div class="frow">
+            <label class="fld"><span data-i18n="filters.from">du</span> <input type="date" id="date_from"></label>
+            <label class="fld"><span data-i18n="filters.to">au</span> <input type="date" id="date_to"></label>
+          </div>
+        </div>
+
+        <div class="fgroup">
+          <label class="flabel" for="ocrstatus" data-i18n="filters.ocr">État de l'OCR</label>
+          <select id="ocrstatus">
+            <option value="all" data-i18n="ocr.all">tous</option>
+            <option value="ok" selected data-i18n="ocr.ok">traités</option>
+            <option value="pending" data-i18n="ocr.pending">en attente</option>
+            <option value="processing" data-i18n="ocr.processing">en cours</option>
+            <option value="failed" data-i18n="ocr.failed">échecs</option>
+          </select>
+        </div>
+
+        <div class="fgroup">
+          <span class="flabel" data-i18n="filters.track">Suivi</span>
+          <div class="progseg" id="progseg" role="group">
+            <button type="button" data-pf="" class="on" data-i18n="prog.all">Tous</button>
+            <button type="button" data-pf="todo" class="p-todo" data-i18n="prog.todo">À faire</button>
+            <button type="button" data-pf="ongoing" class="p-ongoing" data-i18n="prog.ongoing">En cours</button>
+            <button type="button" data-pf="done" class="p-done" data-i18n="prog.done">Fait</button>
+          </div>
+        </div>
+
+        <div class="fgroup">
+          <label class="flabel" for="sort" data-i18n="filters.sort">Tri</label>
+          <select id="sort">
+            <option value="date" data-i18n="sort.date">Date du courrier (récent → ancien)</option>
+            <option value="date_asc" data-i18n="sort.date_asc">Date du courrier (ancien → récent)</option>
+            <option value="added" data-i18n="sort.added">Date d'import (récent → ancien)</option>
+            <option value="added_asc" data-i18n="sort.added_asc">Date d'import (ancien → récent)</option>
+            <option value="pertinence" data-i18n="sort.pertinence">Pertinence</option>
+          </select>
+        </div>
+
+        <label class="fld chk" data-i18n-title="filters.nodate_hint" title="Uniquement les courriers dont l'OCR n'a pas trouvé de date">
+          <input type="checkbox" id="nodate"> <span data-i18n="filters.nodate">sans date détectée</span>
+        </label>
+      </div>
+      <div class="drawer-foot">
+        <button id="reset" type="button" class="ghost" data-i18n="filters.reset">Réinitialiser</button>
+        <button id="go" type="button" class="primary" data-i18n="filters.apply">Rechercher</button>
+      </div>
+    </aside>
+    <div id="scrim" class="scrim"></div>
 
     <main id="results" class="view-detail"></main>
 
@@ -93,7 +130,7 @@
       <button id="prev" type="button">‹</button>
       <span id="pageinfo"></span>
       <button id="next" type="button">›</button>
-      <label class="perpage">par page
+      <label class="perpage"><span data-i18n="pager.per_page">par page</span>
         <select id="page_size">
           <option>25</option><option selected>50</option><option>100</option><option>200</option>
         </select>
@@ -108,66 +145,73 @@
 
   <!-- barre de sélection multiple -->
   <div id="selbar" class="selbar" hidden>
-    <label class="selall"><input type="checkbox" id="sel-all"> Toute la page</label>
-    <strong id="sel-count">0 sélectionné</strong>
+    <label class="selall"><input type="checkbox" id="sel-all"> <span data-i18n="selbar.all_page">Toute la page</span></label>
+    <strong id="sel-count">0</strong>
     <span class="spacer"></span>
     <span id="sel-actions"></span>
-    <button id="select-done" type="button" class="primary">Terminer</button>
+    <button id="select-done" type="button" class="primary" data-i18n="selbar.done">Terminer</button>
   </div>
 
   <dialog id="preview">
     <div class="modal-head">
-      <strong id="preview-title">Aperçu</strong>
-      <span>
-        <a id="preview-dl" class="btn" download>Télécharger l'original</a>
-        <button type="button" data-close>Fermer</button>
+      <strong id="preview-title" data-i18n="preview.title">Aperçu</strong>
+      <span class="modal-head-actions">
+        <a id="preview-open" class="btn" target="_blank" rel="noopener" data-i18n="preview.open">Ouvrir</a>
+        <a id="preview-dl" class="btn" download data-i18n="preview.download">Télécharger l'original</a>
+        <button type="button" data-close data-i18n="preview.close">Fermer</button>
       </span>
     </div>
     <iframe id="preview-frame" title="Aperçu du courrier"></iframe>
+    <div id="preview-mobile" class="preview-mobile" hidden>
+      <img id="preview-thumb" alt="">
+      <p class="muted" data-i18n="preview.mobile_hint">L'aperçu intégré ne défile pas bien sur mobile.</p>
+      <a id="preview-mobile-open" class="btn primary" target="_blank" rel="noopener" data-i18n="preview.open_full">Ouvrir le PDF en plein écran</a>
+      <a id="preview-mobile-dl" class="btn" download data-i18n="preview.download">Télécharger l'original</a>
+    </div>
   </dialog>
 
   <dialog id="editor">
     <form method="dialog" id="editform">
-      <h2>Modifier le courrier</h2>
+      <h2 data-i18n="editor.title">Modifier le courrier</h2>
       <dl id="e-info" class="info"></dl>
-      <label>Titre <input type="text" id="e-title"></label>
-      <label>Date du courrier <input type="date" id="e-date"></label>
-      <label>Avancement
+      <label><span data-i18n="editor.f.title">Titre</span> <input type="text" id="e-title"></label>
+      <label><span data-i18n="editor.f.date">Date du courrier</span> <input type="date" id="e-date"></label>
+      <label><span data-i18n="editor.f.progress">Avancement</span>
         <select id="e-progress">
-          <option value="todo">À faire</option>
-          <option value="ongoing">En cours</option>
-          <option value="done">Fait</option>
+          <option value="todo" data-i18n="prog.todo">À faire</option>
+          <option value="ongoing" data-i18n="prog.ongoing">En cours</option>
+          <option value="done" data-i18n="prog.done">Fait</option>
         </select>
       </label>
-      <label>Notes <textarea id="e-notes" rows="2"></textarea></label>
+      <label><span data-i18n="editor.f.notes">Notes</span> <textarea id="e-notes" rows="2"></textarea></label>
       <div class="reocr">
-        <span>Relancer l'OCR&nbsp;:</span>
-        <button type="button" data-lang="fra">Français</button>
-        <button type="button" data-lang="deu">Allemand</button>
-        <button type="button" data-lang="ara">Arabe</button>
+        <span data-i18n="editor.reocr">Relancer l'OCR&nbsp;:</span>
+        <button type="button" data-lang="fra" data-i18n="lang.fra">Français</button>
+        <button type="button" data-lang="deu" data-i18n="lang.deu">Allemand</button>
+        <button type="button" data-lang="ara" data-i18n="lang.ara">Arabe</button>
         <button type="button" data-lang="fra+deu">FR + DE</button>
       </div>
       <div class="modal-actions">
-        <button type="button" id="e-delete" class="danger">Supprimer</button>
+        <button type="button" id="e-delete" class="danger" data-i18n="editor.delete">Supprimer</button>
         <span class="spacer"></span>
-        <button type="button" data-close>Annuler</button>
-        <button type="submit" class="primary">Enregistrer</button>
+        <button type="button" data-close data-i18n="editor.cancel">Annuler</button>
+        <button type="submit" class="primary" data-i18n="editor.save">Enregistrer</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="updater">
     <div class="modal-head">
-      <strong>Mise à jour depuis GitHub</strong>
-      <button type="button" data-close>Fermer</button>
+      <strong data-i18n="updater.title">Mise à jour depuis GitHub</strong>
+      <button type="button" data-close data-i18n="preview.close">Fermer</button>
     </div>
     <div class="upd-body">
       <p id="upd-current" class="muted"></p>
       <pre id="upd-log" class="console" hidden></pre>
       <div class="modal-actions">
-        <button type="button" id="upd-run" class="primary">Lancer la mise à jour</button>
-        <button type="button" id="upd-restart" class="primary" hidden>Redémarrer les services</button>
-        <button type="button" id="upd-reload" class="primary" hidden>Recharger la page</button>
+        <button type="button" id="upd-run" class="primary" data-i18n="updater.run">Lancer la mise à jour</button>
+        <button type="button" id="upd-restart" class="primary" hidden data-i18n="updater.restart">Redémarrer les services</button>
+        <button type="button" id="upd-reload" class="primary" hidden data-i18n="updater.reload">Recharger la page</button>
         <span class="spacer"></span>
         <span id="upd-state" class="muted"></span>
       </div>

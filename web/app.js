@@ -5,32 +5,244 @@ const LS = {
   get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
 };
+const isMobile = () => matchMedia("(max-width: 860px)").matches;
 
 const state = {
   page: 1,
   pageSize: Number(LS.get("pageSize", 50)) || 50,
   view: LS.get("view", "detail"),
+  nav: "mail",
+  lang: LS.get("lang", (navigator.language || "fr").toLowerCase().startsWith("en") ? "en" : "fr"),
   progFilter: "",
   trash: false,
+  filtersOpen: false,
   selectMode: false,
   selected: new Set(),
   statsSig: null,
   renderSig: null,
+  dashSig: null,
   lastInFlight: 0,
   avgSecPerPage: null,
 };
 
-const LANGS = { fra: "français", deu: "allemand", ara: "arabe", eng: "anglais", fr: "français", de: "allemand", en: "anglais" };
-const OCRSTATUS = { pending: "en attente", processing: "en cours", ok: "OK", "skipped-has-text": "texte conservé", failed: "échec" };
-// échec dû à un fichier vide / tronqué / pas un PDF → ce n'est pas l'OCR, il faut re-scanner
-const RESCAN_RE = /vide \(0 octet\)|n['’]est pas un pdf|pas un pdf|illisible/i;
-const PROG = {
-  todo: ["À faire", "prog-todo"],
-  ongoing: ["En cours", "prog-ongoing"],
-  done: ["Fait", "prog-done"],
+// ===================== i18n ===================== //
+const T = {
+  fr: {
+    "nav.mail": "Courriers", "nav.dash": "Tableau de bord",
+    "head.update": "Mise à jour", "head.update.tip": "Mettre à jour depuis GitHub",
+    "head.theme": "Thème clair / sombre",
+    "skin.night": "Nuit", "skin.paper": "Papier", "skin.corporate": "Corporate",
+    "filters.toggle": "Filtres", "filters.title": "Filtres", "filters.close": "Fermer",
+    "filters.search_ph": "Rechercher dans le texte des courriers…",
+    "filters.dates": "Date du courrier", "filters.from": "du", "filters.to": "au",
+    "filters.ocr": "État de l'OCR", "filters.track": "Suivi", "filters.sort": "Tri",
+    "filters.nodate": "sans date détectée",
+    "filters.nodate_hint": "Uniquement les courriers dont l'OCR n'a pas trouvé de date",
+    "filters.apply": "Rechercher", "filters.reset": "Réinitialiser",
+    "ocr.all": "tous", "ocr.ok": "traités", "ocr.pending": "en attente",
+    "ocr.processing": "en cours", "ocr.failed": "échecs",
+    "prog.all": "Tous", "prog.todo": "À faire", "prog.ongoing": "En cours", "prog.done": "Fait",
+    "sort.date": "Date du courrier (récent → ancien)",
+    "sort.date_asc": "Date du courrier (ancien → récent)",
+    "sort.added": "Date d'import (récent → ancien)",
+    "sort.added_asc": "Date d'import (ancien → récent)",
+    "sort.pertinence": "Pertinence",
+    "view.list": "Liste", "view.detail": "Détail", "view.tiles": "Tuiles", "view.trash": "Corbeille",
+    "select.start": "Sélectionner", "select.stop": "Quitter la sélection",
+    "trash.empty": "Vider la corbeille",
+    "pager.info": "Page {page} / {pages} — {total} courrier(s)", "pager.per_page": "par page",
+    "empty.none": "Aucun courrier trouvé.", "empty.trash": "La corbeille est vide.",
+    "err": "Erreur : {msg}",
+    "badge.pending": "en attente d'OCR", "badge.processing": "OCR en cours…",
+    "badge.rescan": "fichier incomplet — à re-scanner", "badge.failed": "échec OCR ({n}×)",
+    "badge.lang": "langue ? {lang}", "badge.nodate": "date non détectée",
+    "meta.pages": "{n} p.", "meta.scan": "num. {when}", "meta.scan_tip": "date de numérisation (nom du fichier scanner)",
+    "act.preview": "Aperçu", "act.download": "Télécharger", "act.edit": "Modifier",
+    "act.retry": "Réessayer", "act.restore": "Restaurer", "act.delete": "Supprimer",
+    "prog.tip": "Changer l'avancement",
+    "stats.mail": "<b>{n}</b> courrier{s}", "stats.done": "dont <b>{n}</b> traité{s}",
+    "stats.pending": "{n} en attente", "stats.processing": "{n} en cours",
+    "stats.reprocessing": "{n} en ré-OCR", "stats.failed": "{n} en échec",
+    "stats.free": "{n} Go libres",
+    "preview.title": "Aperçu", "preview.open": "Ouvrir", "preview.download": "Télécharger l'original",
+    "preview.close": "Fermer", "preview.open_full": "Ouvrir le PDF en plein écran",
+    "preview.mobile_hint": "L'aperçu intégré ne défile pas bien sur mobile.",
+    "editor.title": "Modifier le courrier",
+    "editor.f.title": "Titre", "editor.f.date": "Date du courrier",
+    "editor.f.progress": "Avancement", "editor.f.notes": "Notes",
+    "editor.reocr": "Relancer l'OCR :", "editor.delete": "Supprimer",
+    "editor.cancel": "Annuler", "editor.save": "Enregistrer",
+    "lang.fra": "Français", "lang.deu": "Allemand", "lang.ara": "Arabe",
+    "ei.file": "Fichier", "ei.scanned": "Numérisé le", "ei.added": "Ajouté le",
+    "ei.pages": "Pages", "ei.size": "Taille", "ei.ocr": "OCR", "ei.proc": "Traitement OCR",
+    "ei.per_page": "~{d}/page", "ei.in_progress": "en cours…", "ei.date": "Date",
+    "ei.date_manual": "saisie", "ei.date_auto": "détectée", "ei.error": "Erreur",
+    "lg.francais": "français", "lg.allemand": "allemand", "lg.arabe": "arabe", "lg.anglais": "anglais",
+    "os.pending": "en attente", "os.processing": "en cours", "os.ok": "OK",
+    "os.skipped": "texte conservé", "os.failed": "échec",
+    "sel.count": "{n} sélectionné{s}", "sel.all_page": "Toute la page",
+    "sel.dl_zip": "Télécharger (ZIP)", "sel.progress_ph": "Avancement…",
+    "sel.trash": "Corbeille", "sel.restore": "Restaurer", "sel.purge": "Supprimer définitivement",
+    "sel.done": "Terminer",
+    "confirm.bulk": "{n} courrier(s) — {action} ?",
+    "confirm.trash_one": "Déplacer ce courrier dans la corbeille ?",
+    "confirm.purge_one": "Supprimer définitivement ? (irréversible)",
+    "confirm.empty_trash": "Vider la corbeille ? Suppression définitive de tout son contenu.",
+    "ba.trash": "déplacer vers la corbeille", "ba.restore": "restaurer",
+    "ba.purge": "supprimer DÉFINITIVEMENT", "ba.progress": "changer l'avancement",
+    "toast.saved": "Enregistré", "toast.reocr": "Ré-OCR ({lang}) en file d'attente",
+    "toast.trashed": "Déplacé dans la corbeille", "toast.restored": "Restauré",
+    "toast.deleted": "Supprimé", "toast.trash_emptied": "Corbeille vidée ({n})",
+    "toast.retry": "Sera retenté automatiquement",
+    "toast.bulk": "{n} traité(s)", "toast.bulk_err": " · {n} erreur(s)",
+    "upd.title": "Mise à jour depuis GitHub", "upd.run": "Lancer la mise à jour",
+    "upd.restart": "Redémarrer les services", "upd.reload": "Recharger la page",
+    "upd.current": "Version actuelle : {commit} — {subject} ({date})",
+    "upd.local_changes": " · modifs locales", "upd.current_unknown": "Version actuelle : inconnue",
+    "upd.doing": "en cours…", "upd.done": "terminé", "upd.err": "\n[erreur : {msg}]\n",
+    "upd.restarting": "redémarrage…",
+    "upd.restart_fail": "\n[échec du redémarrage : {err}]\nSur le Pi : sudo systemctl restart automail-worker automail-web\n",
+    "upd.restart_go": "\nRedémarrage en cours…\n",
+    "upd.back": "\n✅ Services redémarrés. Recharge l'interface : Ctrl + Maj + R (ou le bouton).\n",
+    "upd.slow": "\nLe service met du temps à revenir. Recharge dans un instant (Ctrl + Maj + R).\n",
+    "upd.uptodate": "à jour",
+    "dash.mail": "Courriers", "dash.this_month": "{n} ce mois-ci",
+    "dash.failed_ocr": "En échec OCR", "dash.pending": "{n} en attente",
+    "dash.trash": "Corbeille", "dash.not_counted": "non comptés dans le total",
+    "dash.storage": "Stockage", "dash.of_gb": "sur {n} Go",
+    "dash.by_month": "Courriers par mois", "dash.no_data": "Pas encore de données.",
+    "dash.progress": "Avancement", "dash.ocr_state": "État de l'OCR",
+    "dash.ok": "Traités", "dash.notproc": "Non traités", "dash.errors": "Échecs",
+  },
+  en: {
+    "nav.mail": "Mail", "nav.dash": "Dashboard",
+    "head.update": "Update", "head.update.tip": "Update from GitHub",
+    "head.theme": "Light / dark theme",
+    "skin.night": "Night", "skin.paper": "Paper", "skin.corporate": "Corporate",
+    "filters.toggle": "Filters", "filters.title": "Filters", "filters.close": "Close",
+    "filters.search_ph": "Search the letter text…",
+    "filters.dates": "Letter date", "filters.from": "from", "filters.to": "to",
+    "filters.ocr": "OCR status", "filters.track": "Follow-up", "filters.sort": "Sort",
+    "filters.nodate": "no date detected",
+    "filters.nodate_hint": "Only letters where OCR found no date",
+    "filters.apply": "Search", "filters.reset": "Reset",
+    "ocr.all": "all", "ocr.ok": "done", "ocr.pending": "queued",
+    "ocr.processing": "running", "ocr.failed": "failed",
+    "prog.all": "All", "prog.todo": "To do", "prog.ongoing": "In progress", "prog.done": "Done",
+    "sort.date": "Letter date (newest first)",
+    "sort.date_asc": "Letter date (oldest first)",
+    "sort.added": "Import date (newest first)",
+    "sort.added_asc": "Import date (oldest first)",
+    "sort.pertinence": "Relevance",
+    "view.list": "List", "view.detail": "Detail", "view.tiles": "Tiles", "view.trash": "Trash",
+    "select.start": "Select", "select.stop": "Exit selection",
+    "trash.empty": "Empty trash",
+    "pager.info": "Page {page} / {pages} — {total} letter(s)", "pager.per_page": "per page",
+    "empty.none": "No letters found.", "empty.trash": "The trash is empty.",
+    "err": "Error: {msg}",
+    "badge.pending": "waiting for OCR", "badge.processing": "OCR running…",
+    "badge.rescan": "incomplete file — re-scan it", "badge.failed": "OCR failed ({n}×)",
+    "badge.lang": "language? {lang}", "badge.nodate": "no date detected",
+    "meta.pages": "{n} pg.", "meta.scan": "scan {when}", "meta.scan_tip": "scan date (from the scanner's file name)",
+    "act.preview": "Preview", "act.download": "Download", "act.edit": "Edit",
+    "act.retry": "Retry", "act.restore": "Restore", "act.delete": "Delete",
+    "prog.tip": "Change follow-up status",
+    "stats.mail": "<b>{n}</b> letter{s}", "stats.done": "incl. <b>{n}</b> done",
+    "stats.pending": "{n} queued", "stats.processing": "{n} running",
+    "stats.reprocessing": "{n} re-OCR", "stats.failed": "{n} failed",
+    "stats.free": "{n} GB free",
+    "preview.title": "Preview", "preview.open": "Open", "preview.download": "Download original",
+    "preview.close": "Close", "preview.open_full": "Open the PDF full screen",
+    "preview.mobile_hint": "The embedded preview does not scroll well on mobile.",
+    "editor.title": "Edit letter",
+    "editor.f.title": "Title", "editor.f.date": "Letter date",
+    "editor.f.progress": "Follow-up", "editor.f.notes": "Notes",
+    "editor.reocr": "Re-run OCR:", "editor.delete": "Delete",
+    "editor.cancel": "Cancel", "editor.save": "Save",
+    "lang.fra": "French", "lang.deu": "German", "lang.ara": "Arabic",
+    "ei.file": "File", "ei.scanned": "Scanned on", "ei.added": "Added on",
+    "ei.pages": "Pages", "ei.size": "Size", "ei.ocr": "OCR", "ei.proc": "OCR time",
+    "ei.per_page": "~{d}/page", "ei.in_progress": "running…", "ei.date": "Date",
+    "ei.date_manual": "manual", "ei.date_auto": "detected", "ei.error": "Error",
+    "lg.francais": "French", "lg.allemand": "German", "lg.arabe": "Arabic", "lg.anglais": "English",
+    "os.pending": "queued", "os.processing": "running", "os.ok": "OK",
+    "os.skipped": "text kept", "os.failed": "failed",
+    "sel.count": "{n} selected", "sel.all_page": "Whole page",
+    "sel.dl_zip": "Download (ZIP)", "sel.progress_ph": "Follow-up…",
+    "sel.trash": "Trash", "sel.restore": "Restore", "sel.purge": "Delete permanently",
+    "sel.done": "Done",
+    "confirm.bulk": "{n} letter(s) — {action}?",
+    "confirm.trash_one": "Move this letter to the trash?",
+    "confirm.purge_one": "Delete permanently? (cannot be undone)",
+    "confirm.empty_trash": "Empty the trash? Everything in it is deleted for good.",
+    "ba.trash": "move to trash", "ba.restore": "restore",
+    "ba.purge": "delete PERMANENTLY", "ba.progress": "change follow-up",
+    "toast.saved": "Saved", "toast.reocr": "Re-OCR ({lang}) queued",
+    "toast.trashed": "Moved to trash", "toast.restored": "Restored",
+    "toast.deleted": "Deleted", "toast.trash_emptied": "Trash emptied ({n})",
+    "toast.retry": "Will be retried automatically",
+    "toast.bulk": "{n} done", "toast.bulk_err": " · {n} error(s)",
+    "upd.title": "Update from GitHub", "upd.run": "Run the update",
+    "upd.restart": "Restart the services", "upd.reload": "Reload the page",
+    "upd.current": "Current version: {commit} — {subject} ({date})",
+    "upd.local_changes": " · local changes", "upd.current_unknown": "Current version: unknown",
+    "upd.doing": "running…", "upd.done": "done", "upd.err": "\n[error: {msg}]\n",
+    "upd.restarting": "restarting…",
+    "upd.restart_fail": "\n[restart failed: {err}]\nOn the Pi: sudo systemctl restart automail-worker automail-web\n",
+    "upd.restart_go": "\nRestarting…\n",
+    "upd.back": "\n✅ Services restarted. Reload the interface: Ctrl + Shift + R (or the button).\n",
+    "upd.slow": "\nThe service is slow to come back. Reload in a moment (Ctrl + Shift + R).\n",
+    "upd.uptodate": "up to date",
+    "dash.mail": "Letters", "dash.this_month": "{n} this month",
+    "dash.failed_ocr": "OCR failures", "dash.pending": "{n} queued",
+    "dash.trash": "Trash", "dash.not_counted": "not counted in the total",
+    "dash.storage": "Storage", "dash.of_gb": "of {n} GB",
+    "dash.by_month": "Letters per month", "dash.no_data": "No data yet.",
+    "dash.progress": "Follow-up", "dash.ocr_state": "OCR status",
+    "dash.ok": "Done", "dash.notproc": "Not processed", "dash.errors": "Failures",
+  },
 };
+function t(key, vars) {
+  let s = (T[state.lang] && T[state.lang][key]);
+  if (s == null) s = T.fr[key];
+  if (s == null) return key;
+  if (vars) for (const k in vars) s = s.split("{" + k + "}").join(vars[k]);
+  return s;
+}
+const plural = (n) => (state.lang === "fr" ? (n > 1 ? "s" : "") : (n === 1 ? "" : "s"));
+const langName = (code) => ({
+  fra: t("lg.francais"), deu: t("lg.allemand"), ara: t("lg.arabe"), eng: t("lg.anglais"),
+  fr: t("lg.francais"), de: t("lg.allemand"), en: t("lg.anglais"), ar: t("lg.arabe"),
+}[code] || code);
+const ocrStatusLabel = (s) => ({
+  pending: t("os.pending"), processing: t("os.processing"), ok: t("os.ok"),
+  "skipped-has-text": t("os.skipped"), failed: t("os.failed"),
+}[s] || s);
+
+function applyLang(initial = false) {
+  document.documentElement.lang = state.lang;
+  LS.set("lang", state.lang);
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("#langseg button").forEach((b) => b.classList.toggle("on", b.dataset.lang === state.lang));
+  refreshSelectToggle();
+  $("#empty-trash") && ($("#empty-trash").textContent = t("trash.empty"));
+  updateFilterCount();
+  if (initial) return;
+  updateSelbar();
+  state.renderSig = null;
+  state.dashSig = null;
+  search(true);
+  loadStats();
+  if (state.nav === "dash") loadDashboard(true, true);
+  if ($("#editor").open && editing) renderEditorInfo(editing);
+}
+
+// escape mais pas dans les templates de traduction (qui contiennent du <b>)
+const RESCAN_RE = /vide \(0 octet\)|n['’]est pas un pdf|pas un pdf|illisible|empty \(0 byte|not a pdf|unreadable/i;
 const PROG_NEXT = { todo: "ongoing", ongoing: "done", done: "todo" };
-const PROG_COLOR = { todo: "var(--prog-todo)", ongoing: "var(--prog-ongoing)", done: "var(--prog-done)" };
+const PROG_CLS = { todo: "prog-todo", ongoing: "prog-ongoing", done: "prog-done" };
 
 // --- icônes (stroke, currentColor) ------------------------------------- //
 const IC = {
@@ -60,7 +272,6 @@ let themeMode = LS.get("theme", "auto");
 function applySkin(s) {
   document.documentElement.dataset.skin = s;
   $("#skin").value = s;
-  // le bouton clair/sombre ne sert que pour "corporate"
   $("#theme").hidden = s !== "corporate";
   applyTheme(themeMode);
 }
@@ -77,6 +288,11 @@ $("#theme").addEventListener("click", () => {
   applyTheme(themeMode);
 });
 
+$("#langseg").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-lang]"); if (!b || b.dataset.lang === state.lang) return;
+  state.lang = b.dataset.lang; applyLang();
+});
+
 // --- utilitaires ----------------------------------------------------------- //
 async function api(path, opts = {}) {
   const res = await fetch("/api" + path, {
@@ -90,30 +306,32 @@ async function api(path, opts = {}) {
   return res.status === 204 ? null : res.json();
 }
 function toast(msg) {
-  const t = $("#toast");
-  t.textContent = msg; t.hidden = false;
+  const el = $("#toast");
+  el.textContent = msg; el.hidden = false;
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => (t.hidden = true), 3000);
+  toast._t = setTimeout(() => (el.hidden = true), 3000);
 }
+const errToast = (e) => toast(t("err", { msg: e.message }));
 function fmtBytes(n) {
   if (!n) return "";
-  const u = ["o", "Ko", "Mo", "Go"]; let i = 0;
+  const u = state.lang === "fr" ? ["o", "Ko", "Mo", "Go"] : ["B", "KB", "MB", "GB"];
+  let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
 }
 function fmtDate(iso) {
-  if (!iso) return "sans date";
+  if (!iso) return state.lang === "fr" ? "sans date" : "no date";
   const [y, m, d] = iso.slice(0, 10).split("-");
-  return `${d}/${m}/${y}`;
+  return state.lang === "fr" ? `${d}/${m}/${y}` : `${y}-${m}-${d}`;
 }
-// « 03/09/2026 à 03:23 » à partir d'un ISO avec heure ; sans heure → juste la date
 function fmtDateTime(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.slice(0, 10).split("-");
-  const t = iso.slice(11, 16);
-  return `${d}/${m}/${y}` + (t ? ` à ${t}` : "");
+  const time = iso.slice(11, 16);
+  const date = state.lang === "fr" ? `${d}/${m}/${y}` : `${y}-${m}-${d}`;
+  if (!time) return date;
+  return state.lang === "fr" ? `${date} à ${time}` : `${date} ${time}`;
 }
-// durée lisible : « 45 s », « 3 min 20 s », « 1 h 4 min »
 function fmtDuration(sec) {
   if (sec == null || isNaN(sec)) return "";
   sec = Math.round(sec);
@@ -122,12 +340,10 @@ function fmtDuration(sec) {
   if (m < 60) return s ? `${m} min ${s} s` : `${m} min`;
   return `${Math.floor(m / 60)} h ${m % 60} min`;
 }
-// chrono compact mm:ss pour le compteur temps réel
 function clock(sec) {
   sec = Math.max(0, Math.floor(sec));
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 }
-// met à jour tous les compteurs « OCR en cours » visibles, sans requête réseau
 function tickTimers() {
   for (const el of document.querySelectorAll("[data-since]")) {
     const t0 = Date.parse(el.dataset.since);
@@ -135,13 +351,38 @@ function tickTimers() {
     const elapsed = (Date.now() - t0) / 1000;
     const eta = Number(el.dataset.eta || 0);
     let txt = clock(elapsed);
-    if (eta && eta > elapsed + 3) txt += ` · ~${clock(eta - elapsed)} restant`;
+    if (eta && eta > elapsed + 3) txt += ` · ~${clock(eta - elapsed)}`;
     el.textContent = `${el.dataset.label} ${txt}`;
   }
 }
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// --- volet filtres (drawer) ------------------------------------------------- //
+function setFilters(open) {
+  state.filtersOpen = open;
+  $("#filters").classList.toggle("open", open);
+  $("#scrim").classList.toggle("open", open);
+  $("#filters-toggle").classList.toggle("on", open);
+  if (!isMobile()) LS.set("filtersOpen", open ? "1" : "0");
+}
+function activeFilterCount() {
+  let n = 0;
+  if ($("#q").value.trim()) n++;
+  if ($("#date_from").value) n++;
+  if ($("#date_to").value) n++;
+  if (!state.trash && $("#ocrstatus").value !== "ok") n++;
+  if (state.progFilter) n++;
+  if ($("#nodate").checked) n++;
+  if ($("#sort").value !== "date") n++;
+  return n;
+}
+function updateFilterCount() {
+  const n = activeFilterCount();
+  const el = $("#filters-count");
+  el.textContent = n; el.hidden = n === 0;
 }
 
 // --- requête ------------------------------------------------------------ //
@@ -175,21 +416,20 @@ async function search(silent = false) {
   const results = $("#results");
   if (!silent) {
     results.innerHTML = skeletonHTML(Math.min(8, state.pageSize));
-    state.renderSig = null;               // force le rendu après un skeleton
+    state.renderSig = null;
   }
+  updateFilterCount();
   try {
     const data = await api("/documents?" + currentQuery());
     render(data.items);
     renderPager(data);
   } catch (e) {
-    if (!silent) results.innerHTML = `<p class="empty">Erreur : ${esc(e.message)}</p>`;
+    if (!silent) results.innerHTML = `<p class="empty">${esc(t("err", { msg: e.message }))}</p>`;
   }
 }
 
-// signature de ce qui est affiché : si rien de visible n'a changé entre deux
-// rafraîchissements, on ne touche pas au DOM (évite le clignotement régulier)
 function renderSignature(items) {
-  return state.view + (state.selectMode ? "S" : "") + (state.trash ? "T" : "") + "|" +
+  return state.lang + state.view + (state.selectMode ? "S" : "") + (state.trash ? "T" : "") + "|" +
     items.map((d) =>
       [d.id, d.ocr_status, d.ocr_attempts, d.progress, d.document_date || "",
        d.title || "", d.has_thumbnail ? 1 : 0, d.snippet ? 1 : 0].join(":")
@@ -208,60 +448,69 @@ function render(items) {
   results.className = "view-" + state.view + (state.selectMode ? " selecting" : "");
 
   if (!items.length) {
-    results.innerHTML = `<div class="empty">${IC.inbox}<div>${state.trash ? "La corbeille est vide." : "Aucun courrier trouvé."}</div></div>`;
+    results.innerHTML = `<div class="empty">${IC.inbox}<div>${state.trash ? t("empty.trash") : t("empty.none")}</div></div>`;
     updateSelbar();
     return;
   }
   results.innerHTML = "";
   for (const doc of items) {
+    const hasThumb = !state.trash && doc.has_thumbnail;
     const card = document.createElement("article");
-    card.className = "card" + (state.selected.has(doc.id) ? " selected" : "");
+    card.className = "card" + (hasThumb ? "" : " nothumb") + (state.selected.has(doc.id) ? " selected" : "");
     card.dataset.id = doc.id;
 
-    const thumb = (!state.trash && doc.has_thumbnail && state.view !== "list")
-      ? `<img class="thumb" src="/api/documents/${doc.id}/thumbnail" alt="" loading="lazy">`
-      : `<div class="thumb"></div>`;
+    const thumb = hasThumb
+      ? `<img class="thumb" src="/api/documents/${doc.id}/thumbnail" alt="" loading="lazy" data-act="preview" data-id="${doc.id}">`
+      : "";
 
     const badges = [];
     if (doc.ocr_status === "pending")
-      badges.push(`<span class="badge busy">en attente d'OCR</span>`);
+      badges.push(`<span class="badge busy">${t("badge.pending")}</span>`);
     if (doc.ocr_status === "processing") {
       const eta = (doc.page_count && state.avgSecPerPage)
         ? Math.round(doc.page_count * state.avgSecPerPage) : "";
       badges.push(
         `<span class="badge busy" data-since="${doc.ocr_started_at || ""}" ` +
-        `data-eta="${eta}" data-label="OCR en cours…">OCR en cours…</span>`);
+        `data-eta="${eta}" data-label="${t("badge.processing")}">${t("badge.processing")}</span>`);
     }
     const rescan = doc.ocr_status === "failed" && RESCAN_RE.test(doc.notes || "");
     if (rescan)
-      badges.push(`<span class="badge fail">fichier incomplet — à re-scanner</span>`);
+      badges.push(`<span class="badge fail">${t("badge.rescan")}</span>`);
     else if (doc.ocr_status === "failed")
-      badges.push(`<span class="badge fail">échec OCR (${doc.ocr_attempts}×)</span>`);
+      badges.push(`<span class="badge fail">${t("badge.failed", { n: doc.ocr_attempts })}</span>`);
     if (doc.lang_guess && doc.lang_guess !== "fr")
-      badges.push(`<span class="badge lang">langue&nbsp;? ${LANGS[doc.lang_guess] || doc.lang_guess}</span>`);
+      badges.push(`<span class="badge lang">${t("badge.lang", { lang: langName(doc.lang_guess) })}</span>`);
     if (!state.trash && !doc.document_date &&
         (doc.ocr_status === "ok" || doc.ocr_status === "skipped-has-text"))
-      badges.push(`<span class="badge nodate">date non détectée</span>`);
+      badges.push(`<span class="badge nodate">${t("badge.nodate")}</span>`);
 
     const btn = (extra, ic, label) => `<button ${extra} title="${label}">${ic}<span>${label}</span></button>`;
-    const dl = `<a class="btn" href="/api/documents/${doc.id}/download" title="Télécharger">${IC.download}<span>Télécharger</span></a>`;
-    const edit = btn(`data-act="edit" data-id="${doc.id}"`, IC.edit, "Modifier");
-    const view = btn(`data-act="preview" data-id="${doc.id}"`, IC.eye, "Aperçu");
+    const dl = `<a class="btn" href="/api/documents/${doc.id}/download" title="${t("act.download")}">${IC.download}<span>${t("act.download")}</span></a>`;
+    const edit = btn(`data-act="edit" data-id="${doc.id}"`, IC.edit, t("act.edit"));
+    const view = btn(`data-act="preview" data-id="${doc.id}"`, IC.eye, t("act.preview"));
     let actions;
     if (state.trash) {
-      actions = btn(`data-act="restore" data-id="${doc.id}"`, IC.restore, "Restaurer") +
-        `<button data-act="purge" data-id="${doc.id}" class="danger" title="Supprimer">${IC.trash}<span>Supprimer</span></button>`;
+      actions = btn(`data-act="restore" data-id="${doc.id}"`, IC.restore, t("act.restore")) +
+        `<button data-act="purge" data-id="${doc.id}" class="danger" title="${t("act.delete")}">${IC.trash}<span>${t("act.delete")}</span></button>`;
     } else if (doc.ocr_status === "failed") {
-      actions = view + btn(`data-act="retry" data-id="${doc.id}"`, IC.retry, "Réessayer") + dl + edit;
+      actions = view + btn(`data-act="retry" data-id="${doc.id}"`, IC.retry, t("act.retry")) + dl + edit;
     } else {
       actions = view + dl + edit;
     }
     const failReason = (doc.ocr_status === "failed" && doc.notes)
       ? `<div class="failreason">⚠ ${esc(doc.notes)}</div>` : "";
 
-    const [plabel, pcls] = PROG[doc.progress] || PROG.done;
+    const pcls = PROG_CLS[doc.progress] || PROG_CLS.done;
+    const plabel = t("prog." + (doc.progress || "done"));
     const pill = state.trash ? "" :
-      `<button class="prog ${pcls}" data-prog="${doc.id}" data-cur="${doc.progress}" title="Changer l'avancement">${plabel}</button>`;
+      `<button class="prog ${pcls}" data-prog="${doc.id}" data-cur="${doc.progress}" title="${t("prog.tip")}">${plabel}</button>`;
+
+    const meta = [
+      fmtDate(doc.document_date),
+      doc.page_count ? t("meta.pages", { n: doc.page_count }) : "",
+      doc.bytes ? fmtBytes(doc.bytes) : "",
+      doc.scan_time ? `<span title="${t("meta.scan_tip")}">${t("meta.scan", { when: esc(fmtDateTime(doc.scan_time)) })}</span>` : "",
+    ].filter(Boolean).join(" · ");
 
     card.innerHTML = `
       <label class="pick"><input type="checkbox" data-pick="${doc.id}"${state.selected.has(doc.id) ? " checked" : ""}></label>
@@ -271,12 +520,7 @@ function render(items) {
           <h3>${esc(doc.title || doc.original_filename)}</h3>
           ${pill}
         </div>
-        <div class="meta">
-          ${fmtDate(doc.document_date)}
-          ${doc.page_count ? " · " + doc.page_count + " p." : ""}
-          ${doc.bytes ? " · " + fmtBytes(doc.bytes) : ""}
-          ${doc.scan_time ? ` · <span title="date de numérisation (nom du fichier scanner)">num. ${esc(fmtDateTime(doc.scan_time))}</span>` : ""}
-        </div>
+        <div class="meta">${meta}</div>
         ${badges.length ? `<div class="badges">${badges.join("")}</div>` : ""}
         ${failReason}
         ${doc.snippet ? `<div class="snippet">${doc.snippet}</div>` : ""}
@@ -291,7 +535,7 @@ function render(items) {
 function renderPager(data) {
   const pages = Math.max(1, Math.ceil(data.total / data.page_size));
   $("#pager").hidden = data.total === 0;
-  $("#pageinfo").textContent = `Page ${data.page} / ${pages} — ${data.total} courrier(s)`;
+  $("#pageinfo").textContent = t("pager.info", { page: data.page, pages, total: data.total });
   $("#prev").disabled = data.page <= 1;
   $("#next").disabled = data.page >= pages;
 }
@@ -302,14 +546,17 @@ async function cycleProgress(id, cur) {
   try {
     await api("/documents/" + id, { method: "PATCH", body: JSON.stringify({ progress: val }) });
     search(true);
-  } catch (e) { toast("Erreur : " + e.message); }
+  } catch (e) { errToast(e); }
 }
 
 // --- sélection multiple ------------------------------------------------- //
+function refreshSelectToggle() {
+  $("#select-toggle").textContent = state.selectMode ? t("select.stop") : t("select.start");
+}
 function setSelectMode(on) {
   state.selectMode = on;
   $("#select-toggle").classList.toggle("on", on);
-  $("#select-toggle").textContent = on ? "Quitter la sélection" : "Sélectionner";
+  refreshSelectToggle();
   if (!on) state.selected.clear();
   updateSelbar();
   search(true);
@@ -325,18 +572,18 @@ function updateSelbar() {
   if (!state.selectMode) { bar.hidden = true; return; }
   bar.hidden = false;
   const n = state.selected.size;
-  $("#sel-count").textContent = `${n} sélectionné${n > 1 ? "s" : ""}`;
+  $("#sel-count").textContent = t("sel.count", { n, s: plural(n) });
   const acts = state.trash
-    ? `<button type="button" data-bulk="restore"${n ? "" : " disabled"}>Restaurer</button>
-       <button type="button" data-bulk="purge" class="danger"${n ? "" : " disabled"}>Supprimer définitivement</button>`
-    : `<button type="button" data-bulk="download"${n ? "" : " disabled"}>Télécharger (ZIP)</button>
+    ? `<button type="button" data-bulk="restore"${n ? "" : " disabled"}>${t("sel.restore")}</button>
+       <button type="button" data-bulk="purge" class="danger"${n ? "" : " disabled"}>${t("sel.purge")}</button>`
+    : `<button type="button" data-bulk="download"${n ? "" : " disabled"}>${t("sel.dl_zip")}</button>
        <select id="bulk-prog"${n ? "" : " disabled"}>
-         <option value="">Avancement…</option>
-         <option value="todo">À faire</option>
-         <option value="ongoing">En cours</option>
-         <option value="done">Fait</option>
+         <option value="">${t("sel.progress_ph")}</option>
+         <option value="todo">${t("prog.todo")}</option>
+         <option value="ongoing">${t("prog.ongoing")}</option>
+         <option value="done">${t("prog.done")}</option>
        </select>
-       <button type="button" data-bulk="trash" class="danger"${n ? "" : " disabled"}>Corbeille</button>`;
+       <button type="button" data-bulk="trash" class="danger"${n ? "" : " disabled"}>${t("sel.trash")}</button>`;
   $("#sel-actions").innerHTML = acts;
   const boxes = [...document.querySelectorAll("[data-pick]")];
   $("#sel-all").checked = boxes.length > 0 && boxes.every((b) => state.selected.has(Number(b.dataset.pick)));
@@ -349,74 +596,105 @@ async function bulkAction(action, value) {
     window.location.href = "/api/bulk/download?ids=" + ids.join(",");
     return;
   }
-  const label = { trash: "déplacer vers la corbeille", restore: "restaurer",
-                  purge: "supprimer DÉFINITIVEMENT", progress: "changer l'avancement" }[action];
   if ((action === "trash" || action === "purge") &&
-      !confirm(`${ids.length} courrier(s) — ${label} ?`)) return;
+      !confirm(t("confirm.bulk", { n: ids.length, action: t("ba." + action) }))) return;
   try {
     const r = await api("/bulk", {
       method: "POST", body: JSON.stringify({ ids, action, value: value || null }),
     });
-    toast(`${r.done} traité(s)` + (r.errors.length ? ` · ${r.errors.length} erreur(s)` : ""));
+    toast(t("toast.bulk", { n: r.done }) + (r.errors.length ? t("toast.bulk_err", { n: r.errors.length }) : ""));
     clearSelection();
     search(); loadStats();
-  } catch (e) { toast("Erreur : " + e.message); }
+  } catch (e) { errToast(e); }
 }
 
 // --- stats + auto-refresh -------------------------------------------------- //
 async function loadStats() {
   let s;
   try { s = await api("/stats"); }
-  catch { return; }        // erreur passagère : le prochain tick réessaiera
+  catch { return; }
   try { renderStats(s); }
   catch (e) { console.warn("loadStats", e); }
 }
 
 function renderStats(s) {
   state.avgSecPerPage = s.avg_sec_per_page || null;
-  const parts = [`<b>${s.total}</b> courrier${s.total > 1 ? "s" : ""}`];
+  const parts = [t("stats.mail", { n: s.total, s: plural(s.total) })];
   const inFlight = (s.pending || 0) + (s.processing || 0) + (s.reprocessing || 0);
-  // « traités » = total − en attente − en cours : ce nombre monte à chaque OCR fini,
-  // alors que le total global ne bouge pas (un courrier compte dès son dépôt).
   if (s.pending || s.processing) {
     const done = Math.max(0, s.total - (s.pending || 0) - (s.processing || 0));
-    parts.push(`dont <b>${done}</b> traité${done > 1 ? "s" : ""}`);
+    parts.push(t("stats.done", { n: done, s: plural(done) }));
   }
-  if (s.pending) parts.push(`<span class="busy">${s.pending} en attente</span>`);
-  if (s.processing) parts.push(`<span class="busy">${s.processing} en cours</span>`);
-  if (s.reprocessing) parts.push(`<span class="busy">${s.reprocessing} en ré-OCR</span>`);
-  if (s.failed) parts.push(`<span class="warn">${s.failed} en échec</span>`);
-  parts.push(`${(s.disk_free_bytes / 1e9).toFixed(1)} Go libres`);
+  if (s.pending) parts.push(`<span class="busy">${t("stats.pending", { n: s.pending })}</span>`);
+  if (s.processing) parts.push(`<span class="busy">${t("stats.processing", { n: s.processing })}</span>`);
+  if (s.reprocessing) parts.push(`<span class="busy">${t("stats.reprocessing", { n: s.reprocessing })}</span>`);
+  if (s.failed) parts.push(`<span class="warn">${t("stats.failed", { n: s.failed })}</span>`);
+  parts.push(t("stats.free", { n: (s.disk_free_bytes / 1e9).toFixed(1) }));
   if (s.cpu_temp_c != null) {
-    const t = s.cpu_temp_c;
-    const cls = t >= 80 ? "warn" : t >= 70 ? "busy" : "";
-    parts.push(`<span class="${cls}">${t.toFixed(1)} °C</span>`);
+    const temp = s.cpu_temp_c;
+    const cls = temp >= 80 ? "warn" : temp >= 70 ? "busy" : "";
+    parts.push(`<span class="${cls}">${temp.toFixed(1)} °C</span>`);
   }
   $("#stats").innerHTML = parts.join(" · ");
 
-  // On ne rafraîchit la liste QUE si un compteur a bougé (nouveau courrier,
-  // OCR terminé, échec…). Tant que rien ne change, on ne touche pas au DOM :
-  // c'est ce qui supprime le clignotement régulier de la liste.
   const sig = [s.total, s.failed, s.pending, s.processing, s.reprocessing,
                s.trashed, s.last_added].join("|");
   const changed = state.statsSig !== null && sig !== state.statsSig;
   state.statsSig = sig;
   state.lastInFlight = inFlight;
-  if (changed && state.page === 1 && !document.querySelector("dialog[open]")) {
-    const y = window.scrollY;
-    search(true).then(() => window.scrollTo(0, y));
+  if (changed && !document.querySelector("dialog[open]")) {
+    if (state.nav === "dash") { loadDashboard(true); return; }
+    if (state.page === 1) {
+      const y = window.scrollY;
+      search(true).then(() => window.scrollTo(0, y));
+    }
   }
 }
 
 // --- aperçu ------------------------------------------------------------- //
 function openPreview(id) {
-  $("#preview-frame").src = `/api/documents/${id}/pdf`;
-  $("#preview-dl").href = `/api/documents/${id}/download`;
+  const pdf = `/api/documents/${id}/pdf`;
+  const orig = `/api/documents/${id}/download`;
+  $("#preview-open").href = pdf;
+  $("#preview-dl").href = orig;
+  $("#preview-mobile-open").href = pdf;
+  $("#preview-mobile-dl").href = orig;
+  const frame = $("#preview-frame"), mob = $("#preview-mobile");
+  if (isMobile()) {
+    frame.hidden = true; frame.src = "about:blank";
+    mob.hidden = false;
+    const th = $("#preview-thumb");
+    th.hidden = false;
+    th.onerror = () => (th.hidden = true);
+    th.src = `/api/documents/${id}/thumbnail`;
+  } else {
+    mob.hidden = true;
+    frame.hidden = false;
+    frame.src = pdf;
+  }
   $("#preview").showModal();
 }
 
 // --- édition ---------------------------------------------------------------- //
 let editing = null;
+function renderEditorInfo(d) {
+  const procVal = d.ocr_seconds != null
+    ? fmtDuration(d.ocr_seconds) + (d.page_count ? ` (${t("ei.per_page", { d: fmtDuration(d.ocr_seconds / d.page_count) })})` : "")
+    : (d.ocr_status === "processing" && d.ocr_started_at
+      ? `<span data-since="${d.ocr_started_at}" data-eta="${d.page_count && state.avgSecPerPage ? Math.round(d.page_count * state.avgSecPerPage) : ""}" data-label="${t("ei.in_progress")}">${t("ei.in_progress")}</span>`
+      : "—");
+  $("#e-info").innerHTML = `
+    <dt>${t("ei.file")}</dt><dd>${esc(d.original_filename)}</dd>
+    ${d.scan_time ? `<dt>${t("ei.scanned")}</dt><dd>${esc(fmtDateTime(d.scan_time))}</dd>` : ""}
+    <dt>${t("ei.added")}</dt><dd>${fmtDate(d.added_at)}</dd>
+    <dt>${t("ei.pages")}</dt><dd>${d.page_count ?? "?"}</dd>
+    <dt>${t("ei.size")}</dt><dd>${fmtBytes(d.bytes) || "?"}</dd>
+    <dt>${t("ei.ocr")}</dt><dd>${ocrStatusLabel(d.ocr_status)}${d.ocr_language ? " · " + langName(d.ocr_language) : ""}</dd>
+    <dt>${t("ei.proc")}</dt><dd>${procVal}</dd>
+    <dt>${t("ei.date")}</dt><dd>${fmtDate(d.document_date)}${d.document_date ? " (" + (d.document_date_source === "manual" ? t("ei.date_manual") : t("ei.date_auto")) + ")" : ""}</dd>
+    ${d.ocr_status === "failed" && d.notes ? `<dt>${t("ei.error")}</dt><dd class="err">${esc(d.notes)}</dd>` : ""}`;
+  tickTimers();
+}
 async function openEditor(id) {
   const d = await api("/documents/" + id);
   editing = d;
@@ -424,21 +702,7 @@ async function openEditor(id) {
   $("#e-date").value = d.document_date || "";
   $("#e-progress").value = d.progress || "done";
   $("#e-notes").value = d.notes || "";
-  $("#e-info").innerHTML = `
-    <dt>Fichier</dt><dd>${esc(d.original_filename)}</dd>
-    ${d.scan_time ? `<dt>Numérisé le</dt><dd>${esc(fmtDateTime(d.scan_time))}</dd>` : ""}
-    <dt>Ajouté le</dt><dd>${fmtDate(d.added_at)}</dd>
-    <dt>Pages</dt><dd>${d.page_count ?? "?"}</dd>
-    <dt>Taille</dt><dd>${fmtBytes(d.bytes) || "?"}</dd>
-    <dt>OCR</dt><dd>${OCRSTATUS[d.ocr_status] || d.ocr_status}${d.ocr_language ? " · " + (LANGS[d.ocr_language] || d.ocr_language) : ""}</dd>
-    <dt>Traitement OCR</dt><dd>${
-      d.ocr_seconds != null
-        ? fmtDuration(d.ocr_seconds) + (d.page_count ? ` (~${fmtDuration(d.ocr_seconds / d.page_count)}/page)` : "")
-        : d.ocr_status === "processing" && d.ocr_started_at
-          ? `<span data-since="${d.ocr_started_at}" data-eta="${d.page_count && state.avgSecPerPage ? Math.round(d.page_count * state.avgSecPerPage) : ""}" data-label="en cours…">en cours…</span>`
-          : "—"}</dd>
-    <dt>Date</dt><dd>${fmtDate(d.document_date)}${d.document_date ? " (" + (d.document_date_source === "manual" ? "saisie" : "détectée") + ")" : ""}</dd>
-    ${d.ocr_status === "failed" && d.notes ? `<dt>Erreur</dt><dd class="err">${esc(d.notes)}</dd>` : ""}`;
+  renderEditorInfo(d);
   $("#editor").showModal();
 }
 async function saveEditor() {
@@ -452,42 +716,42 @@ async function saveEditor() {
         notes: $("#e-notes").value,
       }),
     });
-    toast("Enregistré"); $("#editor").close(); search();
-  } catch (e) { toast("Erreur : " + e.message); }
+    toast(t("toast.saved")); $("#editor").close(); search();
+  } catch (e) { errToast(e); }
 }
 async function reocr(lang) {
   try {
     await api(`/documents/${editing.id}/reocr`, { method: "POST", body: JSON.stringify({ language: lang }) });
-    toast(`Ré-OCR (${lang}) en file d'attente`); $("#editor").close(); setTimeout(loadStats, 300);
-  } catch (e) { toast("Erreur : " + e.message); }
+    toast(t("toast.reocr", { lang })); $("#editor").close(); setTimeout(loadStats, 300);
+  } catch (e) { errToast(e); }
 }
 async function del(id) {
-  if (!confirm("Déplacer ce courrier dans la corbeille ?")) return;
+  if (!confirm(t("confirm.trash_one"))) return;
   try {
     await api("/documents/" + id, { method: "DELETE" });
-    toast("Déplacé dans la corbeille"); $("#editor").close(); search(); loadStats();
-  } catch (e) { toast("Erreur : " + e.message); }
+    toast(t("toast.trashed")); $("#editor").close(); search(); loadStats();
+  } catch (e) { errToast(e); }
 }
 async function retry(id) {
   try {
     await api(`/documents/${id}/retry`, { method: "POST" });
-    toast("Sera retenté automatiquement");
+    toast(t("toast.retry"));
     setTimeout(() => { search(); loadStats(); }, 400);
-  } catch (e) { toast("Erreur : " + e.message); }
+  } catch (e) { errToast(e); }
 }
 async function restore(id) {
-  try { await api(`/documents/${id}/restore`, { method: "POST" }); toast("Restauré"); search(); loadStats(); }
-  catch (e) { toast("Erreur : " + e.message); }
+  try { await api(`/documents/${id}/restore`, { method: "POST" }); toast(t("toast.restored")); search(); loadStats(); }
+  catch (e) { errToast(e); }
 }
 async function purge(id) {
-  if (!confirm("Supprimer définitivement ? (irréversible)")) return;
-  try { await api(`/documents/${id}/purge`, { method: "DELETE" }); toast("Supprimé"); search(); loadStats(); }
-  catch (e) { toast("Erreur : " + e.message); }
+  if (!confirm(t("confirm.purge_one"))) return;
+  try { await api(`/documents/${id}/purge`, { method: "DELETE" }); toast(t("toast.deleted")); search(); loadStats(); }
+  catch (e) { errToast(e); }
 }
 async function emptyTrash() {
-  if (!confirm("Vider la corbeille ? Suppression définitive de tout son contenu.")) return;
-  try { const r = await api("/trash/empty", { method: "POST" }); toast(`Corbeille vidée (${r.count})`); search(); loadStats(); }
-  catch (e) { toast("Erreur : " + e.message); }
+  if (!confirm(t("confirm.empty_trash"))) return;
+  try { const r = await api("/trash/empty", { method: "POST" }); toast(t("toast.trash_emptied", { n: r.count })); search(); loadStats(); }
+  catch (e) { errToast(e); }
 }
 
 // --- mise à jour depuis GitHub ------------------------------------------- //
@@ -503,14 +767,14 @@ async function openUpdater() {
   try {
     const v = await api("/version");
     $("#upd-current").textContent = v.commit
-      ? `Version actuelle : ${v.commit} — ${v.subject} (${v.date})${v.dirty ? " · modifs locales" : ""}`
-      : "Version actuelle : inconnue";
+      ? t("upd.current", { commit: v.commit, subject: v.subject, date: v.date }) + (v.dirty ? t("upd.local_changes") : "")
+      : t("upd.current_unknown");
   } catch { $("#upd-current").textContent = ""; }
 }
 async function runUpdate() {
   const log = $("#upd-log");
   log.hidden = false; log.textContent = "";
-  $("#upd-run").disabled = true; $("#upd-state").textContent = "en cours…";
+  $("#upd-run").disabled = true; $("#upd-state").textContent = t("upd.doing");
   try {
     const res = await fetch("/api/update", { method: "POST" });
     if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
@@ -521,35 +785,32 @@ async function runUpdate() {
       log.textContent += dec.decode(value, { stream: true });
       log.scrollTop = log.scrollHeight;
     }
-    $("#upd-state").textContent = "terminé";
+    $("#upd-state").textContent = t("upd.done");
     $("#upd-run").hidden = true; $("#upd-restart").hidden = false;
   } catch (e) {
-    log.textContent += `\n[erreur : ${e.message}]\n`;
+    log.textContent += t("upd.err", { msg: e.message });
     $("#upd-run").disabled = false; $("#upd-state").textContent = "";
   }
 }
 async function restartServices() {
   const log = $("#upd-log");
-  $("#upd-restart").disabled = true; $("#upd-state").textContent = "redémarrage…";
+  $("#upd-restart").disabled = true; $("#upd-state").textContent = t("upd.restarting");
   try {
     const r = await fetch("/api/restart", { method: "POST" });
     const j = await r.json().catch(() => ({}));
     if (j.ok === false) {
-      log.textContent += `\n[échec du redémarrage : ${j.error}]\n` +
-        "Sur le Pi : sudo systemctl restart automail-worker automail-web\n";
+      log.textContent += t("upd.restart_fail", { err: j.error });
       $("#upd-restart").disabled = false; $("#upd-state").textContent = ""; return;
     }
   } catch {}
-  log.textContent += "\nRedémarrage en cours…\n";
+  log.textContent += t("upd.restart_go");
   const t0 = Date.now(); let back = false;
   while (Date.now() - t0 < 90000) {
     await new Promise((r) => setTimeout(r, 2000));
     try { const h = await fetch("/api/health", { cache: "no-store" }); if (h.ok) { back = true; break; } } catch {}
   }
-  log.textContent += back
-    ? "\n✅ Services redémarrés. Recharge l'interface : Ctrl + Maj + R (ou le bouton).\n"
-    : "\nLe service met du temps à revenir. Recharge dans un instant (Ctrl + Maj + R).\n";
-  $("#upd-state").textContent = back ? "à jour" : "";
+  log.textContent += back ? t("upd.back") : t("upd.slow");
+  $("#upd-state").textContent = back ? t("upd.uptodate") : "";
   $("#upd-restart").hidden = true; $("#upd-reload").hidden = false;
 }
 
@@ -569,7 +830,7 @@ function setTrash(on) {
   if (on) {
     const b = document.createElement("button");
     b.id = "empty-trash"; b.type = "button"; b.className = "danger";
-    b.textContent = "Vider la corbeille";
+    b.textContent = t("trash.empty");
     b.addEventListener("click", emptyTrash);
     $("#select-toggle").after(b);
   }
@@ -584,8 +845,15 @@ function setProgFilter(v) {
   document.querySelectorAll("#progseg button").forEach((b) => b.classList.toggle("on", b.dataset.pf === v));
 }
 
-$("#go").addEventListener("click", () => { state.page = 1; search(); });
-$("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") { state.page = 1; search(); } });
+$("#filters-toggle").addEventListener("click", () => setFilters(!state.filtersOpen));
+$("#filters-close").addEventListener("click", () => setFilters(false));
+$("#scrim").addEventListener("click", () => setFilters(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.filtersOpen) setFilters(false); });
+
+$("#go").addEventListener("click", () => { state.page = 1; search(); if (isMobile()) setFilters(false); });
+$("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") { state.page = 1; search(); if (isMobile()) setFilters(false); } });
+$("#date_from").addEventListener("change", () => { state.page = 1; search(); });
+$("#date_to").addEventListener("change", () => { state.page = 1; search(); });
 $("#ocrstatus").addEventListener("change", () => { state.page = 1; search(); });
 $("#progseg").addEventListener("click", (e) => {
   const b = e.target.closest("[data-pf]"); if (!b) return;
@@ -649,9 +917,11 @@ $("#results").addEventListener("change", (e) => {
 
 // --- navigation Courriers / Tableau de bord ------------------------------- //
 function setNav(v) {
+  state.nav = v;
   document.querySelectorAll(".mainnav button").forEach((b) => b.classList.toggle("on", b.dataset.nav === v));
   $("#view-mail").hidden = v !== "mail";
   $("#view-dash").hidden = v !== "dash";
+  if (v !== "mail") setFilters(false);
   if (v === "dash") loadDashboard();
 }
 document.querySelector(".mainnav").addEventListener("click", (e) => {
@@ -677,31 +947,34 @@ function legend(obj, colors, labels) {
       <span class="num">${obj[k] || 0}</span>
     </div>`).join("")}</div>`;
 }
-async function loadDashboard() {
+async function loadDashboard(silent = false, force = false) {
   const el = $("#dash");
-  el.innerHTML = skeletonHTML(4);
+  if (!silent) { el.innerHTML = skeletonHTML(4); state.dashSig = null; }
   try {
     const o = await api("/overview");
+    const sig = state.lang + "|" + JSON.stringify(o);
+    if (!force && sig === state.dashSig) return;
+    state.dashSig = sig;
     const usedGo = ((o.disk_total_bytes - o.disk_free_bytes) / 1e9).toFixed(1);
     const totGo = (o.disk_total_bytes / 1e9).toFixed(0);
     el.innerHTML = `
-      <div class="kpi"><div class="k-label">Courriers</div><div class="k-value">${o.total}</div>
-        <div class="k-sub">${o.this_month} ce mois-ci</div></div>
-      <div class="kpi"><div class="k-label">En échec OCR</div><div class="k-value">${o.by_ocr.failed}</div>
-        <div class="k-sub">${o.by_ocr.pending} en attente</div></div>
-      <div class="kpi"><div class="k-label">Corbeille</div><div class="k-value">${o.trashed}</div>
-        <div class="k-sub">non comptés dans le total</div></div>
-      <div class="kpi"><div class="k-label">Stockage</div><div class="k-value">${usedGo} Go</div>
-        <div class="k-sub">sur ${totGo} Go${o.cpu_temp_c != null ? " · " + o.cpu_temp_c.toFixed(0) + " °C" : ""}</div></div>
-      <div class="panel"><h3>Courriers par mois</h3>${o.by_month.length ? bars(o.by_month) : '<p class="muted">Pas encore de données.</p>'}</div>
-      <div class="panel half"><h3>Avancement</h3>${legend(o.by_progress,
+      <div class="kpi"><div class="k-label">${t("dash.mail")}</div><div class="k-value">${o.total}</div>
+        <div class="k-sub">${t("dash.this_month", { n: o.this_month })}</div></div>
+      <div class="kpi"><div class="k-label">${t("dash.failed_ocr")}</div><div class="k-value">${o.by_ocr.failed}</div>
+        <div class="k-sub">${t("dash.pending", { n: o.by_ocr.pending })}</div></div>
+      <div class="kpi"><div class="k-label">${t("dash.trash")}</div><div class="k-value">${o.trashed}</div>
+        <div class="k-sub">${t("dash.not_counted")}</div></div>
+      <div class="kpi"><div class="k-label">${t("dash.storage")}</div><div class="k-value">${usedGo} Go</div>
+        <div class="k-sub">${t("dash.of_gb", { n: totGo })}${o.cpu_temp_c != null ? " · " + o.cpu_temp_c.toFixed(0) + " °C" : ""}</div></div>
+      <div class="panel"><h3>${t("dash.by_month")}</h3>${o.by_month.length ? bars(o.by_month) : `<p class="muted">${t("dash.no_data")}</p>`}</div>
+      <div class="panel half"><h3>${t("dash.progress")}</h3>${legend(o.by_progress,
         { todo: "var(--prog-todo)", ongoing: "var(--prog-ongoing)", done: "var(--prog-done)" },
-        { todo: "À faire", ongoing: "En cours", done: "Fait" })}</div>
-      <div class="panel half"><h3>État de l'OCR</h3>${legend(o.by_ocr,
+        { todo: t("prog.todo"), ongoing: t("prog.ongoing"), done: t("prog.done") })}</div>
+      <div class="panel half"><h3>${t("dash.ocr_state")}</h3>${legend(o.by_ocr,
         { ok: "var(--ok)", pending: "var(--accent)", failed: "var(--danger)" },
-        { ok: "Traités", pending: "Non traités", failed: "Échecs" })}</div>`;
+        { ok: t("dash.ok"), pending: t("dash.notproc"), failed: t("dash.errors") })}</div>`;
   } catch (e) {
-    el.innerHTML = `<p class="empty">Erreur : ${esc(e.message)}</p>`;
+    if (!silent) el.innerHTML = `<p class="empty">${esc(t("err", { msg: e.message }))}</p>`;
   }
 }
 
@@ -718,19 +991,20 @@ document.querySelectorAll("[data-close]").forEach((b) =>
 $("#preview").addEventListener("close", () => ($("#preview-frame").src = "about:blank"));
 
 // --- démarrage --------------------------------------------------------- //
+applyLang(true);
 setView(state.view);
+setFilters(!isMobile() && LS.get("filtersOpen", "0") === "1");
 loadStats();
 search();
 (function pollLoop() {
-  // try/finally : la boucle de rafraîchissement ne doit JAMAIS s'arrêter,
-  // même si un tick lève une exception (sinon il faut recharger la page).
   Promise.resolve()
     .then(loadStats)
     .catch((e) => console.warn("pollLoop", e))
     .finally(() => setTimeout(pollLoop, state.lastInFlight > 0 ? 4000 : 10000));
 })();
-setInterval(tickTimers, 1000);   // compteur « OCR en cours » temps réel
-// de retour sur l'onglet : resynchronise tout de suite
+setInterval(tickTimers, 1000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) { loadStats(); search(true); }
+  if (document.hidden) return;
+  loadStats();
+  if (state.nav === "dash") loadDashboard(true); else search(true);
 });

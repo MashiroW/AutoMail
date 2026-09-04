@@ -191,6 +191,25 @@ def test_auto_retry_recupere_un_echec(cfg, conn, client):
     assert fresh["ocr_attempts"] == 1
 
 
+def test_retry_ne_relance_pas_un_fichier_vide(cfg, conn):
+    """L'auto-retry ne doit pas « récupérer » un fichier vide : il garde le
+    message clair et s'arrête (attempts au plafond)."""
+    p = cfg.originals_dir / "2026" / "09" / "vide.pdf"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"")
+    doc_id = db.insert_document(
+        conn, sha256="x" * 64, original_filename="vide.pdf",
+        original_path=rel(cfg, p), title="vide", ocr_status="failed",
+        ocr_attempts=1, notes="boom",
+    )
+    doc = db.get_document(conn, doc_id, include_deleted=True)
+    assert reprocess_failed_doc(conn, cfg, doc) is False
+    fresh = db.get_document(conn, doc_id, include_deleted=True)
+    assert fresh["ocr_status"] == "failed"
+    assert "vide" in fresh["notes"].lower()
+    assert fresh["ocr_attempts"] >= db.MAX_OCR_ATTEMPTS
+
+
 def test_auto_retry_abandonne_apres_3(cfg, conn):
     from courriers_ocr.worker import auto_retry_failed
     _make_failed(cfg, conn, attempts=3)   # déjà au plafond

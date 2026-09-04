@@ -392,6 +392,14 @@ def reprocess_failed_doc(conn: sqlite3.Connection, cfg: Config, doc: dict) -> bo
                            last_attempt_at=db.now_iso(),
                            notes="fichier d'origine absent du disque")
         return False
+    bad = pdf_sanity_error(src)
+    if bad:
+        # fichier vide / pas un PDF : inutile de relancer l'OCR, on garde le
+        # message clair et on stoppe le retry auto (attempts -> plafond).
+        db.update_document(conn, doc_id, ocr_status="failed",
+                           ocr_attempts=db.MAX_OCR_ATTEMPTS,
+                           last_attempt_at=db.now_iso(), notes=bad)
+        return False
 
     db.update_document(conn, doc_id, ocr_status="processing",
                        ocr_started_at=db.now_iso(), ocr_seconds=None)

@@ -199,12 +199,18 @@ courrier apparaît, cherchable.
 
 ## Interface web
 
+- **Français / anglais** : bascule `FR / EN` dans l'en-tête, mémorisée ; toute
+  l'interface se retraduit à chaud.
+- **Volet Filtres** : bouton *Filtres* → panneau coulissant à gauche (façon
+  Amazon) regroupant recherche, dates, état OCR, suivi, tri, « sans date ».
+  Fermé par défaut pour dégager la vue (surtout sur mobile) ; un badge sur le
+  bouton indique le nombre de filtres actifs. Les contrôles d'affichage
+  (liste / détail / tuiles, corbeille, sélection) restent dans la barre du haut.
 - **Recherche mots-clés** : sur tout le texte OCR, insensible aux accents et à la
   casse, par préfixe (`convoc` trouve « convocation »).
-- **Filtres** : date, **OCR** (menu gris : tous / traités / *en attente* /
-  *en cours* / échecs), **Suivi** (pastilles colorées : tous / à faire / en
-  cours / fait). Les deux sont distincts : l'un = l'état de l'OCR, l'autre
-  = l'action à mener sur le courrier.
+- **Filtres** : date, **OCR** (tous / traités / *en attente* / *en cours* /
+  échecs), **Suivi** (pastilles : tous / à faire / en cours / fait). Les deux
+  sont distincts : l'un = l'état de l'OCR, l'autre = l'action à mener.
 - **Tri** : par *date du courrier* (celle détectée par l'OCR) ou par *date
   d'import* (arrivée dans AutoMail), chacune en ordre croissant ou décroissant ;
   plus « pertinence » quand une recherche texte est active.
@@ -234,7 +240,8 @@ courrier apparaît, cherchable.
   *en cours*, *fait* (défaut). Clic sur la pastille pour la faire tourner ;
   modifiable aussi dans la fiche *Modifier* et en groupe.
 - **3 affichages** : liste / détail / tuiles (grandes vignettes), sélecteur en
-  haut à droite, mémorisé.
+  haut à droite, mémorisé. La vignette est cliquable (ouvre l'aperçu) et
+  apparaît aussi en mode *liste*.
 - **Nombre par page** réglable en bas (25 à 200).
 - **Mode sélection** : bouton *Sélectionner* → des cases apparaissent sur les
   cartes ; une barre propose alors les actions groupées : **télécharger en ZIP**,
@@ -254,7 +261,13 @@ courrier apparaît, cherchable.
 - **Direction visuelle** commutable (sélecteur en en-tête) : *Nuit* (sombre,
   minimal), *Papier* (clair, éditorial), *Corporate* (structuré, clair/sombre).
 - **Tableau de bord** (onglet en-tête) : indicateurs clés, volume de courriers
-  par mois, répartition par avancement et par état OCR.
+  par mois, répartition par avancement et par état OCR. Il **se rafraîchit tout
+  seul** lui aussi, comme la liste.
+- **Mobile** : en-tête et barre repensés pour les petits écrans, cibles
+  tactiles agrandies, fenêtres en plein écran. L'aperçu PDF propose un bouton
+  **« Ouvrir le PDF en plein écran »** (visionneuse native du téléphone, qui
+  défile et zoome) — l'aperçu intégré ne le permet pas de façon fiable sur
+  mobile.
 - Interface soignée : icônes SVG, écrans de chargement (skeletons), micro-
   animations (respecte `prefers-reduced-motion`), en-tête et barre d'outils
   collants.
